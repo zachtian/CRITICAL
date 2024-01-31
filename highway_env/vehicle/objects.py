@@ -61,7 +61,6 @@ class RoadObject(ABC):
         self.crashed = False
         self.hit = False
         self.impact = np.zeros(self.position.shape)
-        self.crash_type = None
 
     @classmethod
     def make_on_lane(
@@ -112,12 +111,6 @@ class RoadObject(ABC):
             if self.solid and other.solid:
                 self.crashed = True
                 other.crashed = True
-
-                x, y = transition
-                if abs(y) > abs(x):
-                    self.crash_type = "front" if y > 0 else "back"
-                elif abs(x) > abs(y):
-                    self.crash_type = "side"
             if not self.solid:
                 self.hit = True
             if not other.solid:
