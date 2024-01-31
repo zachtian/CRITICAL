@@ -1,4 +1,4 @@
-from typing import Dict, Text
+from typing import Dict, List, Optional, Text, Tuple, TypeVar
 
 import numpy as np
 
@@ -119,6 +119,49 @@ class LLMEnv(AbstractEnv):
             )
         reward *= rewards["on_road_reward"]
         return reward
+
+    def step(self, action: Action) -> Tuple[Observation, float, bool, bool, dict]:
+        # Existing code...
+        self._simulate(action)
+        obs = self.observation_type.observe()
+        reward = self._reward(action)
+        terminated = self._is_terminated()
+        truncated = self._is_truncated()
+        
+        crash_type = None
+        if self.vehicle.crashed:
+            for other_vehicle in self.road.vehicles:
+                if other_vehicle is not self.vehicle and other_vehicle.crashed:
+                    # Calculate the vector from your vehicle to the other vehicle
+                    vector_to_other = other_vehicle.position - self.vehicle.position
+
+                    # Normalize the vector
+                    norm = np.linalg.norm(vector_to_other)
+                    if norm != 0:
+                        vector_to_other /= norm
+
+                    # Use dot product to determine the crash direction
+                    dot_product = np.dot(vector_to_other, [np.cos(self.vehicle.heading), np.sin(self.vehicle.heading)])
+                    print(dot_product)
+                    if dot_product > 0.5:
+                        crash_type = "front"
+                    elif dot_product < 0.5:
+                        crash_type = "rear"
+                    else:
+                        crash_type = "side"
+                    break
+
+
+        info = self._info(obs, action)
+        info['crash_type'] = crash_type
+            
+        self.time += 1 / self.config["policy_frequency"]
+        self._simulate(action)
+        
+        if self.render_mode == "human":
+            self.render()
+
+        return obs, reward, terminated, truncated, info
 
     def _rewards(self, action: Action) -> Dict[Text, float]:
         neighbours = self.road.network.all_side_lanes(self.vehicle.lane_index)
