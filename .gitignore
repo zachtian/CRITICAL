@@ -1,2 +1,5 @@
 highway_env/envs/common/__pycache__
 failures.csv
+videos
+highway_env/envs/__pycache__
+failures.csv

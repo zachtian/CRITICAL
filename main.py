@@ -46,11 +46,14 @@ class FailureAnalysisCallback(BaseCallback):
         new_obs = self.locals['new_obs']
         actions = self.locals['actions']
         rewards = self.locals['rewards']
+        crash_type = None
         if infos[0]['crashed']:
             crash_type = infos[0].get('crash_type')  # Safely get crash_type
             print(f"Crash type: {crash_type}")
 
-        # Store the last observation for failure analysis
+        if infos[0]['went_offroad']:
+            print("went_offroad!")
+
         if self.last_obs is None:
             self.last_obs = new_obs  # This is the first observation
 
@@ -74,7 +77,7 @@ class FailureAnalysisCallback(BaseCallback):
         self.last_obs = new_obs
 
         # Print failure types and counts every 5,000 steps
-        if self.step_counter % 1000 == 0:
+        if self.step_counter % 100 == 0:
             self.append_failure_stats_to_csv()
 
         if self.step_counter % self.render_freq == 0:
@@ -86,9 +89,9 @@ class FailureAnalysisCallback(BaseCallback):
         # Determine the type of failure from info
         if 'crashed' in info and info['crashed']:
             return 'crashed'
-        elif 'offroad' in info and info['offroad']:
-            return 'offroad'
-        elif 'timeout' in info:
+        if 'went_offroad' in info and info['went_offroad']:
+            return 'went_offroad'
+        if 'timeout' in info:
             return 'timeout'
         return None
 

@@ -36,7 +36,7 @@ class LLMEnv(AbstractEnv):
                 "vehicles_count": 100,
                 "controlled_vehicles": 1,
                 "initial_lane_id": None,
-                "duration": 40,  # [s]
+                "duration": 60,  # [s]
                 "ego_spacing": 2,
                 "vehicles_density": 1,
                 "collision_reward": -1,  # The reward received when colliding with a vehicle.
@@ -127,34 +127,36 @@ class LLMEnv(AbstractEnv):
         reward = self._reward(action)
         terminated = self._is_terminated()
         truncated = self._is_truncated()
-        
-        crash_type = None
+        info = self._info(obs, action)
+
+        if 'went_offroad' not in info:
+            info['went_offroad'] = False
+        if not self.vehicle.on_road:
+            info['went_offroad'] = True
+
+        if 'crash_type' not in info:
+            info['crash_type'] = None
         if self.vehicle.crashed:
+            crash_type = None
             for other_vehicle in self.road.vehicles:
                 if other_vehicle is not self.vehicle and other_vehicle.crashed:
-                    # Calculate the vector from your vehicle to the other vehicle
+                    # Calculate vector to other vehicle and normalize
                     vector_to_other = other_vehicle.position - self.vehicle.position
-
-                    # Normalize the vector
                     norm = np.linalg.norm(vector_to_other)
                     if norm != 0:
                         vector_to_other /= norm
 
-                    # Use dot product to determine the crash direction
+                    # Determine crash type using dot product
                     dot_product = np.dot(vector_to_other, [np.cos(self.vehicle.heading), np.sin(self.vehicle.heading)])
-                    print(dot_product)
                     if dot_product > 0.5:
                         crash_type = "front"
-                    elif dot_product < 0.5:
+                    elif dot_product < -0.5:
                         crash_type = "rear"
                     else:
                         crash_type = "side"
                     break
+            info['crash_type'] = crash_type
 
-
-        info = self._info(obs, action)
-        info['crash_type'] = crash_type
-            
         self.time += 1 / self.config["policy_frequency"]
         self._simulate(action)
         
