@@ -579,3 +579,15 @@ class DefensiveVehicle(LinearVehicle):
         MERGE_ACC_GAIN / (MERGE_VEL_RATIO * MERGE_TARGET_VEL),
         2.0,
     ]
+
+class AggressiveIDMVehicle(IDMVehicle):
+    def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
+        super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
+        self.COMFORT_ACC_MAX = 4.0  # more aggressive acceleration
+        self.DISTANCE_WANTED = 3.0  # shorter following distance
+
+class DefensiveIDMVehicle(IDMVehicle):
+    def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
+        super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
+        self.COMFORT_ACC_MAX = 2.0  # more conservative acceleration
+        self.DISTANCE_WANTED = 7.0  # larger following distance

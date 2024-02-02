@@ -2,4 +2,6 @@ highway_env/envs/common/__pycache__
 failures.csv
 videos
 highway_env/envs/__pycache__
-failures.csv
+highway_env/vehicle/__pycache__
+highway_env/__pycache__
+highway_env/vehicle/__pycache__

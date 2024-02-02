@@ -107,5 +107,5 @@ def register_highway_envs():
     # u_turn_env.py
     register(id="u-turn-v0", entry_point="highway_env.envs:UTurnEnv")
 
-    # u_turn_env.py
+    # llm_env.py
     register(id="llm-v0", entry_point="highway_env.envs:LLMEnv")
