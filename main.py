@@ -9,14 +9,18 @@ from collections import defaultdict
 if not os.path.exists("videos"):
     os.makedirs("videos")
 
-env = gym.make('llm-v0', render_mode='rgb_array')
-env = DummyVecEnv([lambda: env])
-video_env = VecVideoRecorder(env, "videos", 
-                             record_video_trigger=lambda step: step % 10000 == 0,
-                             video_length=500, 
-                             name_prefix="dqn_highway")
+REAL_TIME_RENDERING = False
 
-model = DQN('MlpPolicy', video_env,
+if REAL_TIME_RENDERING:
+    env = DummyVecEnv([lambda: gym.make('llm-v0', render_mode='rgb_array')])
+    env = VecVideoRecorder(env, "videos", 
+                                record_video_trigger=lambda step: step % 10000 == 0,
+                                video_length=500, 
+                                name_prefix="dqn_highway")
+else:
+    env = gym.make('llm-v0')
+
+model = DQN('MlpPolicy', env,
             policy_kwargs=dict(net_arch=[256, 256]),
             learning_rate=5e-4,
             buffer_size=15000,
@@ -30,13 +34,14 @@ model = DQN('MlpPolicy', video_env,
             verbose=1)
 
 class FailureAnalysisCallback(BaseCallback):
-    def __init__(self, verbose=0):
+    def __init__(self, env, verbose=0):
         super(FailureAnalysisCallback, self).__init__(verbose)
         self.failures = []
+        self.env = env 
         self.last_obs = None
         self.step_counter = 0  # Initialize a step counter
         self.csv_file = 'failures.csv'
-        self.render_freq = 10
+
     def _on_step(self) -> bool:
         # Increment step counter
         self.step_counter += 1
@@ -73,26 +78,21 @@ class FailureAnalysisCallback(BaseCallback):
                     "info": failure_info
                 })
 
-        # Update the last observation
         self.last_obs = new_obs
-
-        # Print failure types and counts every 5,000 steps
         if self.step_counter % 100 == 0:
             self.append_failure_stats_to_csv()
+            self.update_environment_config()
 
-        if self.step_counter % self.render_freq == 0:
+        if REAL_TIME_RENDERING:
             self.model.env.render()
 
         return True
 
     def determine_failure_type(self, info):
-        # Determine the type of failure from info
         if 'crashed' in info and info['crashed']:
             return 'crashed'
         if 'went_offroad' in info and info['went_offroad']:
             return 'went_offroad'
-        if 'timeout' in info:
-            return 'timeout'
         return None
 
     def print_failure_stats(self):
@@ -124,13 +124,15 @@ class FailureAnalysisCallback(BaseCallback):
                 for crash_type, c_count in crash_type_counts[failure_type].items():
                     writer.writerow([self.step_counter, failure_type, f_count, crash_type, c_count])
 
-        # Clear failures list after saving to CSV
         self.failures.clear()
 
-callback = FailureAnalysisCallback()
+    def update_environment_config(self):
+        new_config = {"aggressive_vehicle_ratio": 0.4}
+        self.env.unwrapped.update_env_config(new_config)
 
-# Start the learning
+
+callback = FailureAnalysisCallback(env)
+
 model.learn(int(5e4), callback=callback)
 
-# Close the video recorder
 video_env.close()

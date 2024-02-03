@@ -10,7 +10,7 @@ from highway_env.road.road import Road, RoadNetwork
 from highway_env.utils import near_split
 from highway_env.vehicle.controller import ControlledVehicle
 from highway_env.vehicle.kinematics import Vehicle
-from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle
+from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle
 
 Observation = np.ndarray
 
@@ -30,17 +30,17 @@ class LLMEnv(AbstractEnv):
             {
                 "observation": {"type": "Kinematics"},
                 "action": {
-                    "type": "DiscreteAction",
+                    "type": "DiscreteMetaAction",
                 },
                 "screen_width": 1920,  # [px]
                 "screen_height": 1080,  # [px]
                 "lanes_count": 5,
-                "vehicles_count": 100,
+                "vehicles_count": 30,
                 "controlled_vehicles": 1,
                 "initial_lane_id": None,
                 "duration": 60,  # [s]
                 "ego_spacing": 2,
-                "vehicles_density": 1,
+                "vehicles_density": 1.3,
                 "collision_reward": -1,  # The reward received when colliding with a vehicle.
                 "right_lane_reward": 0.1,  # The reward received when driving on the right-most lanes, linearly mapped to
                 "high_speed_reward": 0.4,  # The reward received when driving at full speed, linearly mapped to zero for
@@ -50,6 +50,7 @@ class LLMEnv(AbstractEnv):
                 "offroad_terminal": True,
                 "aggressive_vehicle_ratio": 0.3, 
                 "defensive_vehicle_ratio": 0.2,
+                "truck_vehicle_ratio": 0.1,
             }
         )
         return config
@@ -70,16 +71,15 @@ class LLMEnv(AbstractEnv):
 
     def _create_vehicles(self) -> None:
         other_vehicles_type = utils.class_from_path(self.config["other_vehicles_type"])
-        aggressive_ratio = self.config["aggressive_vehicle_ratio"]
-        defensive_ratio = self.config["defensive_vehicle_ratio"]
         total_vehicles = self.config["vehicles_count"]
-        num_aggressive = int(total_vehicles * aggressive_ratio)
-        num_defensive = int(total_vehicles * defensive_ratio)
+        num_aggressive = int(total_vehicles * self.config["aggressive_vehicle_ratio"])
+        num_defensive = int(total_vehicles * self.config["defensive_vehicle_ratio"])
+        num_truck = int(total_vehicles * self.config["truck_vehicle_ratio"])
         num_normal = total_vehicles - num_aggressive - num_defensive
         self.controlled_vehicles = []
-        # Half of the vehicles are added before the ego vehicle
+
         for _ in range(total_vehicles // 2):
-            self.add_random_vehicle(num_aggressive, num_defensive, num_normal, other_vehicles_type)
+            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_normal, other_vehicles_type)
 
         ego_vehicle = Vehicle.create_random(
             self.road,
@@ -94,12 +94,10 @@ class LLMEnv(AbstractEnv):
         self.road.vehicles.append(ego_vehicle)
 
         for _ in range(total_vehicles // 2, total_vehicles):
-            self.add_random_vehicle(num_aggressive, num_defensive, num_normal, other_vehicles_type)
+            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_normal, other_vehicles_type)
 
-    def add_random_vehicle(self, num_aggressive, num_defensive, num_normal, other_vehicles_type):
+    def add_random_vehicle(self, num_aggressive, num_defensive, num_truck, num_normal, other_vehicles_type):
         total_vehicles = num_aggressive + num_defensive + num_normal
-        if total_vehicles <= 0:
-            return
 
         # Randomly select vehicle type based on their proportions
         rand_choice = random.randint(1, total_vehicles)
@@ -107,44 +105,12 @@ class LLMEnv(AbstractEnv):
             vehicle = AggressiveIDMVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
         elif rand_choice <= num_aggressive + num_defensive:
             vehicle = DefensiveIDMVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
+        elif rand_choice <= num_aggressive + num_defensive + num_truck:
+            vehicle = TruckVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
         else:
             vehicle = other_vehicles_type.create_random(self.road, spacing=1 / self.config["vehicles_density"])
 
         self.road.vehicles.append(vehicle)
-
-    # def _create_vehicles(self) -> None:
-    #     """Create some new random vehicles of a given type, and add them on the road."""
-    #     other_vehicles_type = utils.class_from_path(self.config["other_vehicles_type"])
-    #     other_per_controlled = near_split(
-    #         self.config["vehicles_count"], num_bins=self.config["controlled_vehicles"]
-    #     )
-    #     self.controlled_vehicles = []
-    #     for others in other_per_controlled:
-    #         for _ in range(others//2):
-    #             vehicle = other_vehicles_type.create_random(
-    #                 self.road, spacing=1 / self.config["vehicles_density"]
-    #             )
-    #             vehicle.randomize_behavior()
-    #             self.road.vehicles.append(vehicle)
-
-    #         vehicle = Vehicle.create_random(
-    #             self.road,
-    #             speed=25,
-    #             lane_id=self.config["initial_lane_id"],
-    #             spacing=self.config["ego_spacing"],
-    #         )
-    #         vehicle = self.action_type.vehicle_class(
-    #             self.road, vehicle.position, vehicle.heading, vehicle.speed
-    #         )
-    #         self.controlled_vehicles.append(vehicle)
-    #         self.road.vehicles.append(vehicle)
-
-    #         for _ in range(others//2):
-    #             vehicle = other_vehicles_type.create_random(
-    #                 self.road, spacing=1 / self.config["vehicles_density"]
-    #             )
-    #             vehicle.randomize_behavior()
-    #             self.road.vehicles.append(vehicle)
 
     def _reward(self, action: Action) -> float:
         """
@@ -194,11 +160,14 @@ class LLMEnv(AbstractEnv):
                     if norm != 0:
                         vector_to_other /= norm
 
-                    # Determine crash type using dot product
-                    dot_product = np.dot(vector_to_other, [np.cos(self.vehicle.heading), np.sin(self.vehicle.heading)])
-                    if dot_product > 0.5:
+                    # Determine relative angle
+                    ego_heading_vector = [np.cos(self.vehicle.heading), np.sin(self.vehicle.heading)]
+                    angle = np.arccos(np.clip(np.dot(vector_to_other, ego_heading_vector), -1, 1))
+
+                    # Determine crash type based on angle
+                    if np.abs(angle) < np.pi / 4:
                         crash_type = "front"
-                    elif dot_product < -0.5:
+                    elif np.abs(angle) > 3 * np.pi / 4:
                         crash_type = "rear"
                     else:
                         crash_type = "side"
@@ -244,10 +213,10 @@ class LLMEnv(AbstractEnv):
         """The episode is truncated if the time limit is reached."""
         return self.time >= self.config["duration"]
 
-    def update_env_config(new_config):
+    def update_env_config(self, new_config):
         """
         Update the global environment configuration.
 
         :param new_config: A dictionary containing new configuration parameters.
         """
-        config.update(new_config)
+        self.config.update(new_config)
