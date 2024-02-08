@@ -33,7 +33,7 @@ class LLMEnv(AbstractEnv):
                     "type": "DiscreteMetaAction",
                 },
                 "screen_width": 1920,  # [px]
-                "screen_height": 1080,  # [px]
+                "screen_height": 270,  # [px]
                 "lanes_count": 5,
                 "vehicles_count": 30,
                 "controlled_vehicles": 1,

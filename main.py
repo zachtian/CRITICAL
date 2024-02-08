@@ -4,7 +4,27 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
 from stable_baselines3.common.callbacks import BaseCallback
 import os
 import csv
+import json
 from collections import defaultdict
+from langchain.chat_models import ChatOllama
+from langchain.schema import AIMessage, HumanMessage, SystemMessage
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+
+llm = ChatOllama(
+    model="llama2:70b-chat",
+)
+
+
+env_json_schema = {
+    "title": "Environment Configuration",
+    "description": "Configuration settings of the simulation environment.",
+    "type": "object",
+    "properties": {
+        # Define properties based on your environment's configuration
+    },
+    "required": ["lanes_count", "vehicles_count", "aggressive_vehicle_ratio"]
+}
 
 if not os.path.exists("videos"):
     os.makedirs("videos")
@@ -14,8 +34,8 @@ REAL_TIME_RENDERING = False
 if REAL_TIME_RENDERING:
     env = DummyVecEnv([lambda: gym.make('llm-v0', render_mode='rgb_array')])
     env = VecVideoRecorder(env, "videos", 
-                                record_video_trigger=lambda step: step % 10000 == 0,
-                                video_length=500, 
+                                record_video_trigger=lambda step: step % 100 == 0,
+                                video_length=50, 
                                 name_prefix="dqn_highway")
 else:
     env = gym.make('llm-v0')
@@ -81,7 +101,23 @@ class FailureAnalysisCallback(BaseCallback):
         self.last_obs = new_obs
         if self.step_counter % 100 == 0:
             self.append_failure_stats_to_csv()
-            self.update_environment_config()
+            dumps = json.dumps(env_json_schema, indent=2)
+            recent_crash_types = [failure['crash_type'] for failure in self.failures]
+            messages = [
+                HumanMessage(content="Please analyze the following environment configuration and failure data using the JSON schema:"),
+                HumanMessage(content=f"{dumps}"),
+                HumanMessage(content=f"Current Environment Config: {self.env.unwrapped.config}\nRecent Failures: {recent_crash_types}"),
+                HumanMessage(content="Based on this information, suggest changes to the environment configuration.")
+            ]
+            import pdb; pdb.set_trace()
+            # Create the prompt and chain
+            prompt = ChatPromptTemplate.from_messages(messages)
+            chain = prompt | llm | StrOutputParser()
+
+            # Invoke the chain to get a response
+            response = chain.invoke({"dumps": dumps})
+            print('LLM Suggestion:', response)
+            self.failures.clear()
 
         if REAL_TIME_RENDERING:
             self.model.env.render()
@@ -124,7 +160,6 @@ class FailureAnalysisCallback(BaseCallback):
                 for crash_type, c_count in crash_type_counts[failure_type].items():
                     writer.writerow([self.step_counter, failure_type, f_count, crash_type, c_count])
 
-        self.failures.clear()
 
     def update_environment_config(self):
         new_config = {"aggressive_vehicle_ratio": 0.4}
