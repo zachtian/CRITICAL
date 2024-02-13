@@ -6,7 +6,7 @@ import os
 import csv
 import json
 from collections import defaultdict
-from langchain.chat_models import ChatOllama
+from langchain_community.chat_models import ChatOllama
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -109,10 +109,10 @@ class FailureAnalysisCallback(BaseCallback):
                 HumanMessage(content=f"Current Environment Config: {self.env.unwrapped.config}\nRecent Failures: {recent_crash_types}"),
                 HumanMessage(content="Based on this information, suggest changes to the environment configuration.")
             ]
-            import pdb; pdb.set_trace()
             # Create the prompt and chain
             prompt = ChatPromptTemplate.from_messages(messages)
             chain = prompt | llm | StrOutputParser()
+            import pdb; pdb.set_trace()
 
             # Invoke the chain to get a response
             response = chain.invoke({"dumps": dumps})

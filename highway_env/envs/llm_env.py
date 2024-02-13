@@ -155,7 +155,7 @@ class LLMEnv(AbstractEnv):
             for other_vehicle in self.road.vehicles:
                 if other_vehicle is not self.vehicle and other_vehicle.crashed:
                     # Calculate vector to other vehicle and normalize
-                    vector_to_other = other_vehicle.position - self.vehicle.position
+                    vector_to_other = other_vehicle.position
                     norm = np.linalg.norm(vector_to_other)
                     if norm != 0:
                         vector_to_other /= norm
@@ -164,13 +164,22 @@ class LLMEnv(AbstractEnv):
                     ego_heading_vector = [np.cos(self.vehicle.heading), np.sin(self.vehicle.heading)]
                     angle = np.arccos(np.clip(np.dot(vector_to_other, ego_heading_vector), -1, 1))
 
+                    norm_ego = np.linalg.norm(self.vehicle.position)
+                    epsilon = 5.5
+
                     # Determine crash type based on angle
-                    if np.abs(angle) < np.pi / 4:
-                        crash_type = "front"
-                    elif np.abs(angle) > 3 * np.pi / 4:
-                        crash_type = "rear"
+                    if norm_ego < norm:
+                        if np.abs(angle) < np.pi / 20:
+                            crash_type = "front"
+                        else:
+                            crash_type = "front-edge"
+                    elif (norm_ego > norm) and (norm_ego < norm+epsilon):
+                        crash_type = "side-on"
                     else:
-                        crash_type = "side"
+                        if np.abs(angle) < np.pi / 20:
+                            crash_type = "rear"
+                        else:
+                            crash_type = "rear-edge"
                     break
             info['crash_type'] = crash_type
 
