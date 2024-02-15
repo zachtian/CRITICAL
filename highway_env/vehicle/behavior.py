@@ -583,25 +583,31 @@ class DefensiveVehicle(LinearVehicle):
 class AggressiveIDMVehicle(IDMVehicle):
     def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
         super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
-        self.COMFORT_ACC_MAX = 4.0  # more aggressive acceleration
-        self.DISTANCE_WANTED = 3.0  # shorter following distance
-        self.LANE_CHANGE_MIN_ACC_GAIN = 0.1  # Lower threshold for lane changing
-        self.LANE_CHANGE_DELAY = 0.5  # More frequent consideration for lane changing
-        self.POLITENESS = 0.1  # Less concern for other vehicles when lane changing
+        self.COMFORT_ACC_MAX = 4.0  
+        self.DISTANCE_WANTED = 3.0 
+        self.LANE_CHANGE_MIN_ACC_GAIN = 0.1 
+        self.LANE_CHANGE_DELAY = 0.5  
+        self.POLITENESS = 0.1  
 
 class DefensiveIDMVehicle(IDMVehicle):
     def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
         super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
-        self.COMFORT_ACC_MAX = 2.0  # more conservative acceleration
-        self.DISTANCE_WANTED = 7.0  # larger following distance
-        self.LANE_CHANGE_MIN_ACC_GAIN = 0.5  # Higher threshold for lane changing
-        self.LANE_CHANGE_DELAY = 3.0  # Less frequent consideration for lane changing
-        self.POLITENESS = 0.9  # More concern for other vehicles when lane changing
+        self.COMFORT_ACC_MAX = 2.0  
+        self.DISTANCE_WANTED = 7.0  
+        self.LANE_CHANGE_MIN_ACC_GAIN = 0.5  
+        self.LANE_CHANGE_DELAY = 3.0  
+        self.POLITENESS = 0.9  
 
 class TruckVehicle(IDMVehicle):
     def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
         super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
-        self.LENGTH = 10.0  # Length of the truck
+        self.LENGTH = 10.0  
         self.WIDTH = 2.5
         self.max_speed = 20.0
-        # Additional truck-specific behavior modifications can be added here
+
+class MotorVehicle(IDMVehicle):
+    def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
+        super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
+        self.LENGTH = 2.5  
+        self.WIDTH = 0.8  
+        self.max_speed = 30.0  

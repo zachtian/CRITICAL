@@ -10,7 +10,7 @@ from highway_env.road.road import Road, RoadNetwork
 from highway_env.utils import near_split
 from highway_env.vehicle.controller import ControlledVehicle
 from highway_env.vehicle.kinematics import Vehicle
-from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle
+from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle, MotorVehicle
 
 Observation = np.ndarray
 
@@ -51,6 +51,7 @@ class LLMEnv(AbstractEnv):
                 "aggressive_vehicle_ratio": 0.3, 
                 "defensive_vehicle_ratio": 0.2,
                 "truck_vehicle_ratio": 0.1,
+                "motor_vehicle_ratio": 0.2,
             }
         )
         return config
@@ -75,11 +76,12 @@ class LLMEnv(AbstractEnv):
         num_aggressive = int(total_vehicles * self.config["aggressive_vehicle_ratio"])
         num_defensive = int(total_vehicles * self.config["defensive_vehicle_ratio"])
         num_truck = int(total_vehicles * self.config["truck_vehicle_ratio"])
+        num_motor = int(total_vehicles * self.config["motor_vehicle_ratio"])
         num_normal = total_vehicles - num_aggressive - num_defensive
         self.controlled_vehicles = []
 
         for _ in range(total_vehicles // 2):
-            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_normal, other_vehicles_type)
+            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_motor, num_normal, other_vehicles_type)
 
         ego_vehicle = Vehicle.create_random(
             self.road,
@@ -94,9 +96,9 @@ class LLMEnv(AbstractEnv):
         self.road.vehicles.append(ego_vehicle)
 
         for _ in range(total_vehicles // 2, total_vehicles):
-            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_normal, other_vehicles_type)
+            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_motor, num_normal, other_vehicles_type)
 
-    def add_random_vehicle(self, num_aggressive, num_defensive, num_truck, num_normal, other_vehicles_type):
+    def add_random_vehicle(self, num_aggressive, num_defensive, num_truck, num_motor, num_normal, other_vehicles_type):
         total_vehicles = num_aggressive + num_defensive + num_normal
 
         # Randomly select vehicle type based on their proportions
@@ -107,6 +109,8 @@ class LLMEnv(AbstractEnv):
             vehicle = DefensiveIDMVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
         elif rand_choice <= num_aggressive + num_defensive + num_truck:
             vehicle = TruckVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
+        elif rand_choice <= num_aggressive + num_defensive + num_truck + num_motor:
+            vehicle = MotorVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
         else:
             vehicle = other_vehicles_type.create_random(self.road, spacing=1 / self.config["vehicles_density"])
 
@@ -175,6 +179,7 @@ class LLMEnv(AbstractEnv):
                             crash_type = "front-edge"
                     elif (norm_ego > norm) and (norm_ego < norm+epsilon):
                         crash_type = "side-on"
+
                     else:
                         if np.abs(angle) < np.pi / 20:
                             crash_type = "rear"

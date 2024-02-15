@@ -5,6 +5,9 @@ from stable_baselines3.common.callbacks import BaseCallback
 import os
 import csv
 import json
+import ast
+
+import pandas as pd
 from collections import defaultdict
 from langchain_community.chat_models import ChatOllama
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
@@ -165,6 +168,36 @@ class FailureAnalysisCallback(BaseCallback):
         new_config = {"aggressive_vehicle_ratio": 0.4}
         self.env.unwrapped.update_env_config(new_config)
 
+def generate_highwayenv_config(time_block, df):
+    filtered_df = df[df['SixHourBlock'].str.contains(f'{time_block}')]
+    selected_row = filtered_df.sample(n=1).iloc[0]
+
+    driving_style_dict = ast.literal_eval(selected_row['Driving_Style'])
+    vehicle_class_dict = ast.literal_eval(selected_row['Vehicle_Class'])
+    aggressive_vehicle_counts = driving_style_dict.get('Aggressive', 0)
+    defensive_vehicle_counts = driving_style_dict.get('Defensive', 0)
+    regular_vehicle_counts = driving_style_dict.get('Regular', 0)
+    total_vehicles = aggressive_vehicle_counts + defensive_vehicle_counts + regular_vehicle_counts
+    # Calculate ratios
+    aggressive_vehicle_ratio = float(aggressive_vehicle_counts / total_vehicles)
+    defensive_vehicle_ratio = float(defensive_vehicle_counts / total_vehicles)
+    truck_vehicle_ratio = float(vehicle_class_dict.get('Truck', 0) / total_vehicles)
+    motor_vehicle_ratio = float(vehicle_class_dict.get('Motorcycle', 0) / total_vehicles)
+
+    config = {
+        "aggressive_vehicle_ratio": aggressive_vehicle_ratio,
+        "defensive_vehicle_ratio": defensive_vehicle_ratio,
+        "truck_vehicle_ratio": truck_vehicle_ratio,
+        "motor_vehicle_ratio": motor_vehicle_ratio,
+    }
+
+    config_json = json.dumps(config, indent=4)
+
+    return config_json
+
+df = pd.read_csv('NGSIM_data.csv')
+config_for_time_block = generate_highwayenv_config('06:00', df)
+print(config_for_time_block)
 
 callback = FailureAnalysisCallback(env)
 
