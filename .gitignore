@@ -4,3 +4,4 @@ videos
 highway_env/envs/__pycache__
 highway_env/vehicle/__pycache__
 highway_env/__pycache__
+highway_env/road/__pycache__
