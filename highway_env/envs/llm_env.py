@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Text, Tuple, TypeVar
 
 import numpy as np
 import random
-
+import ast
 from highway_env import utils
 from highway_env.envs.common.abstract import AbstractEnv
 from highway_env.envs.common.action import Action
@@ -13,7 +13,6 @@ from highway_env.vehicle.kinematics import Vehicle
 from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle, MotorVehicle
 
 Observation = np.ndarray
-
 
 class LLMEnv(AbstractEnv):
     """
@@ -233,4 +232,10 @@ class LLMEnv(AbstractEnv):
 
         :param new_config: A dictionary containing new configuration parameters.
         """
+
+        new_config = ast.literal_eval(new_config)
+
         self.config.update(new_config)
+        print("FINAL UPDATED CONFIG PLEASE DOUBLE CHECK", self.config)
+
+

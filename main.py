@@ -15,7 +15,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 llm = ChatOllama(
-    model="llama2:70b-chat",
+    model="llama2:13b-chat",
 )
 
 
@@ -106,21 +106,29 @@ class FailureAnalysisCallback(BaseCallback):
             self.append_failure_stats_to_csv()
             dumps = json.dumps(env_json_schema, indent=2)
             recent_crash_types = [failure['crash_type'] for failure in self.failures]
+            
+            small_config = self.get_small_config()
+            
             messages = [
                 HumanMessage(content="Please analyze the following environment configuration and failure data using the JSON schema:"),
                 HumanMessage(content=f"{dumps}"),
-                HumanMessage(content=f"Current Environment Config: {self.env.unwrapped.config}\nRecent Failures: {recent_crash_types}"),
-                HumanMessage(content="Based on this information, suggest changes to the environment configuration.")
+                HumanMessage(content=f"Current Environment Config: {small_config}\nRecent Failures: {recent_crash_types}"),
+                HumanMessage(content="Based on this information, suggest changes to the environment configuration. Do not add additional parameters. Only suggest edits to existing parameters.")
             ]
             # Create the prompt and chain
             prompt = ChatPromptTemplate.from_messages(messages)
             chain = prompt | llm | StrOutputParser()
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
 
             # Invoke the chain to get a response
             response = chain.invoke({"dumps": dumps})
             print('LLM Suggestion:', response)
             self.failures.clear()
+
+            # Use LLM response to edit environment configuration file 
+            new_config = self.generate_new_config_file(small_config, response)
+            print(new_config)
+            self.update_environment_config(new_config)
 
         if REAL_TIME_RENDERING:
             self.model.env.render()
@@ -163,9 +171,30 @@ class FailureAnalysisCallback(BaseCallback):
                 for crash_type, c_count in crash_type_counts[failure_type].items():
                     writer.writerow([self.step_counter, failure_type, f_count, crash_type, c_count])
 
+    def generate_new_config_file(self, small_config, response) -> dict:
+        dumps = json.dumps(env_json_schema, indent=2)
+        messages = [
+            HumanMessage(content=f"Given the following current environment configuration: {small_config}"),
+            HumanMessage(content=f"And the following editing suggestions: {response}"),
+            HumanMessage(content="Please generate an updated configuration file in dictionary format. ONLY generate the new configuration file in dictionary format, no other text. For example, do not include config= or an introductory or closing sentence, or anything like that")
+        ]
 
-    def update_environment_config(self):
-        new_config = {"aggressive_vehicle_ratio": 0.4}
+        # Create the prompt and chain
+        prompt = ChatPromptTemplate.from_messages(messages)
+        chain = prompt | llm | StrOutputParser()
+        # Invoke the chain to get a response
+        response_for_updated_config = chain.invoke({"dumps": dumps})
+
+        return response_for_updated_config
+
+    def get_small_config(self):
+        full_config = dict(self.env.unwrapped.config)
+        small_config = {k: full_config[k] for k in ('lanes_count', 'vehicles_count', 'ego_spacing', 'vehicles_density', 'collision_reward', 'right_lane_reward', 'high_speed_reward', 'lane_change_reward', 'reward_speed_range', 'aggressive_vehicle_ratio', 'defensive_vehicle_ratio', 'truck_vehicle_ratio')}
+
+        return small_config
+
+    def update_environment_config(self, new_config):
+        print("Checking to see if this function is executed")
         self.env.unwrapped.update_env_config(new_config)
 
 def generate_highwayenv_config(time_block, df):
