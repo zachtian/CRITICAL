@@ -15,7 +15,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 llm = ChatOllama(
-    model="llama2:13b-chat",
+    model="llama2:70b-chat",
 )
 
 
@@ -201,8 +201,8 @@ def generate_highwayenv_config(time_block, df):
     filtered_df = df[df['SixHourBlock'].str.contains(f'{time_block}')]
     selected_row = filtered_df.sample(n=1).iloc[0]
 
-    driving_style_dict = ast.literal_eval(selected_row['Driving_Style'])
-    vehicle_class_dict = ast.literal_eval(selected_row['Vehicle_Class'])
+    driving_style_dict = ast.literal_eval(selected_row['Driving_Behavior'])
+    vehicle_class_dict = ast.literal_eval(selected_row['Vehicle_Type'])
     aggressive_vehicle_counts = driving_style_dict.get('Aggressive', 0)
     defensive_vehicle_counts = driving_style_dict.get('Defensive', 0)
     regular_vehicle_counts = driving_style_dict.get('Regular', 0)
