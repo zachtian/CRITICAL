@@ -27,6 +27,8 @@ class FailureAnalysisCallback(BaseCallback):
         NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
         self.update_environment_config(NGSIM_config)
         self.use_llm = USE_LLM
+        self.attempts_to_generate_valid_config = 100
+        self.format_check = False
 
     def _on_step(self) -> bool:
         # Increment step counter
@@ -91,7 +93,16 @@ class FailureAnalysisCallback(BaseCallback):
             # Use LLM response to edit environment configuration file 
             new_config = self.generate_new_config_file(small_config, response)
             print(new_config)
-            self.update_environment_config(new_config)
+
+            for i in range(self.attempts_to_generate_valid_config):
+                if self.format_check == False:
+                    try:
+                        self.update_environment_config(new_config)
+                        self.format_check = True
+                    except:
+                        print("The chosen LLM did not appropriately format its environment configuration suggestions, trying again.")
+                else:
+                    break
 
         if REAL_TIME_RENDERING:
             self.model.env.render()
@@ -157,7 +168,6 @@ class FailureAnalysisCallback(BaseCallback):
         return small_config
 
     def update_environment_config(self, new_config):
-        print("Checking to see if this function is executed")
         self.env.unwrapped.update_env_config(new_config)
 
 def generate_highwayenv_config(df):
@@ -187,7 +197,7 @@ def generate_highwayenv_config(df):
     return config_json
 
 llm = ChatOllama(
-    model="llama2:70b-chat",
+    model="llama2:13b-chat",
 )
 
 env_json_schema = {
