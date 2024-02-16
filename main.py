@@ -14,56 +14,19 @@ from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-llm = ChatOllama(
-    model="llama2:70b-chat",
-)
-
-
-env_json_schema = {
-    "title": "Environment Configuration",
-    "description": "Configuration settings of the simulation environment.",
-    "type": "object",
-    "properties": {
-        # Define properties based on your environment's configuration
-    },
-    "required": ["lanes_count", "vehicles_count", "aggressive_vehicle_ratio"]
-}
-
-if not os.path.exists("videos"):
-    os.makedirs("videos")
-
-REAL_TIME_RENDERING = False
-
-if REAL_TIME_RENDERING:
-    env = DummyVecEnv([lambda: gym.make('llm-v0', render_mode='rgb_array')])
-    env = VecVideoRecorder(env, "videos", 
-                                record_video_trigger=lambda step: step % 100 == 0,
-                                video_length=50, 
-                                name_prefix="dqn_highway")
-else:
-    env = gym.make('llm-v0')
-
-model = DQN('MlpPolicy', env,
-            policy_kwargs=dict(net_arch=[256, 256]),
-            learning_rate=5e-4,
-            buffer_size=15000,
-            learning_starts=200,
-            batch_size=128,
-            gamma=0.8,
-            train_freq=1,
-            gradient_steps=1,
-            target_update_interval=50,
-            exploration_fraction=0.7,
-            verbose=1)
 
 class FailureAnalysisCallback(BaseCallback):
-    def __init__(self, env, verbose=0):
+    def __init__(self, env, USE_LLM = False, verbose=0):
         super(FailureAnalysisCallback, self).__init__(verbose)
         self.failures = []
         self.env = env 
         self.last_obs = None
         self.step_counter = 0  # Initialize a step counter
         self.csv_file = 'failures.csv'
+        self.NGSIM_df = pd.read_csv('NGSIM_data.csv')
+        NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
+        self.update_environment_config(NGSIM_config)
+        self.use_llm = USE_LLM
 
     def _on_step(self) -> bool:
         # Increment step counter
@@ -102,25 +65,25 @@ class FailureAnalysisCallback(BaseCallback):
                 })
 
         self.last_obs = new_obs
-        if self.step_counter % 100 == 0:
+        if self.use_llm and self.step_counter % 500 == 0:
             self.append_failure_stats_to_csv()
             dumps = json.dumps(env_json_schema, indent=2)
             recent_crash_types = [failure['crash_type'] for failure in self.failures]
             
             small_config = self.get_small_config()
-            
+            NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
             messages = [
                 HumanMessage(content="Please analyze the following environment configuration and failure data using the JSON schema:"),
                 HumanMessage(content=f"{dumps}"),
-                HumanMessage(content=f"Current Environment Config: {small_config}\nRecent Failures: {recent_crash_types}"),
-                HumanMessage(content="Based on this information, suggest changes to the environment configuration. Do not add additional parameters. Only suggest edits to existing parameters.")
+                HumanMessage(content="Current Real-World Traffic Data (NGSIM_config):"),
+                HumanMessage(content=f"{NGSIM_config}"),
+                HumanMessage(content=f"Current Simulation Environment Config: {small_config}\nRecent Failures: {recent_crash_types}"),
+                HumanMessage(content="Based on the real-world data and current simulation settings, suggest changes to the environment configuration. Please consider the NGSIM_config as a reference for realism. Do not add additional parameters. Only suggest edits to existing parameters.")
             ]
             # Create the prompt and chain
             prompt = ChatPromptTemplate.from_messages(messages)
             chain = prompt | llm | StrOutputParser()
-            # import pdb; pdb.set_trace()
 
-            # Invoke the chain to get a response
             response = chain.invoke({"dumps": dumps})
             print('LLM Suggestion:', response)
             self.failures.clear()
@@ -189,7 +152,7 @@ class FailureAnalysisCallback(BaseCallback):
 
     def get_small_config(self):
         full_config = dict(self.env.unwrapped.config)
-        small_config = {k: full_config[k] for k in ('lanes_count', 'vehicles_count', 'ego_spacing', 'vehicles_density', 'collision_reward', 'right_lane_reward', 'high_speed_reward', 'lane_change_reward', 'reward_speed_range', 'aggressive_vehicle_ratio', 'defensive_vehicle_ratio', 'truck_vehicle_ratio')}
+        small_config = {k: full_config[k] for k in ('vehicles_count', 'vehicles_density', 'aggressive_vehicle_ratio', 'defensive_vehicle_ratio', 'truck_vehicle_ratio', 'motor_vehicle_ratio')}
 
         return small_config
 
@@ -197,9 +160,8 @@ class FailureAnalysisCallback(BaseCallback):
         print("Checking to see if this function is executed")
         self.env.unwrapped.update_env_config(new_config)
 
-def generate_highwayenv_config(time_block, df):
-    filtered_df = df[df['SixHourBlock'].str.contains(f'{time_block}')]
-    selected_row = filtered_df.sample(n=1).iloc[0]
+def generate_highwayenv_config(df):
+    selected_row = df.sample(n=1).iloc[0]
 
     driving_style_dict = ast.literal_eval(selected_row['Driving_Behavior'])
     vehicle_class_dict = ast.literal_eval(selected_row['Vehicle_Type'])
@@ -224,12 +186,64 @@ def generate_highwayenv_config(time_block, df):
 
     return config_json
 
-df = pd.read_csv('NGSIM_data.csv')
-config_for_time_block = generate_highwayenv_config('06:00', df)
-print(config_for_time_block)
+llm = ChatOllama(
+    model="llama2:70b-chat",
+)
 
-callback = FailureAnalysisCallback(env)
+env_json_schema = {
+    "title": "Environment Configuration",
+    "description": "Configuration settings of the simulation environment.",
+    "type": "object",
+    "properties": {
+        "vehicles_count": {"type": "integer"},
+        "vehicles_density": {"type": "number"},
+        "aggressive_vehicle_ratio": {"type": "number"},
+        "defensive_vehicle_ratio": {"type": "number"},
+        "truck_vehicle_ratio": {"type": "number"},
+        "motor_vehicle_ratio": {"type": "number"}
+    },
+    "required": [
+        "vehicles_count", 
+        "vehicles_density",
+        "aggressive_vehicle_ratio", 
+        "defensive_vehicle_ratio", 
+        "truck_vehicle_ratio", 
+        "motor_vehicle_ratio"
+    ]
+}
 
-model.learn(int(5e4), callback=callback)
+if __name__ == "__main__":
+    if not os.path.exists("videos"):
+        os.makedirs("videos")
 
-video_env.close()
+    REAL_TIME_RENDERING = False
+    USE_LLM = True
+
+    if REAL_TIME_RENDERING:
+        env = DummyVecEnv([lambda: gym.make('llm-v0', render_mode='rgb_array')])
+        env = VecVideoRecorder(env, "videos", 
+                                    record_video_trigger=lambda step: step % 100 == 0,
+                                    video_length=50, 
+                                    name_prefix="dqn_highway")
+    else:
+        env = gym.make('llm-v0')
+
+    model = DQN('MlpPolicy', env,
+                policy_kwargs=dict(net_arch=[256, 256]),
+                learning_rate=5e-4,
+                buffer_size=15000,
+                learning_starts=200,
+                batch_size=128,
+                gamma=0.8,
+                train_freq=1,
+                gradient_steps=1,
+                target_update_interval=50,
+                exploration_fraction=0.7,
+                verbose=1,
+                tensorboard_log='logs',)
+
+    callback = FailureAnalysisCallback(env, USE_LLM)
+
+    model.learn(int(1e5), callback=callback)
+
+    video_env.close()
