@@ -48,6 +48,7 @@ class FailureAnalysisCallback(BaseCallback):
         self.cumulative_reward += rewards[0]
         self.episode_length += 1
         crash_type = None
+        self.format_check = False
         if infos[0]['crashed']:
             crash_type = infos[0].get('crash_type') 
 
@@ -118,7 +119,6 @@ class FailureAnalysisCallback(BaseCallback):
                 self.failures.clear()
 
                 new_config = self.generate_new_config_file(small_config, response)
-                print(new_config)
 
                 for i in range(self.attempts_to_generate_valid_config):
                     if self.format_check == False:
@@ -127,6 +127,7 @@ class FailureAnalysisCallback(BaseCallback):
                             self.format_check = True
                         except:
                             print("The chosen LLM did not appropriately format its environment configuration suggestions, trying again.")
+                            new_config = self.generate_new_config_file(small_config, response)
                     else:
                         break
             else:
@@ -169,7 +170,13 @@ class FailureAnalysisCallback(BaseCallback):
     def update_environment_config(self, new_config):
         parsed_config = ast.literal_eval(new_config)
         self.env.unwrapped.update_env_config(new_config)
-        self.write_config_to_json(parsed_config, self.config_file)
+
+        parsed_config_with_prop = parsed_config.get('properties')
+        if parsed_config_with_prop == None:
+            self.write_config_to_json(parsed_config, self.config_file)
+        else:
+            parsed_config_with_prop.pop("vehicles_density", None)
+            self.write_config_to_json(parsed_config_with_prop, self.config_file)
 
     def write_failure_stats_to_csv(self):
         with open(self.failure_file, 'a', newline='') as file:
@@ -237,13 +244,10 @@ def generate_highwayenv_config(df):
     return config_json
 
 llm = ChatOllama(
-    model="llama2:70b-chat",
+    model="llama2:13b-chat",
 )
 
 env_json_schema = {
-    "title": "Environment Configuration",
-    "description": "Configuration settings of the simulation environment.",
-    "type": "object",
     "properties": {
         "vehicles_density": {"type": "number"},
         "aggressive_vehicle_ratio": {"type": "number"},
@@ -251,13 +255,6 @@ env_json_schema = {
         "truck_vehicle_ratio": {"type": "number"},
         "motor_vehicle_ratio": {"type": "number"}
     },
-    "required": [
-        "vehicles_density",
-        "aggressive_vehicle_ratio", 
-        "defensive_vehicle_ratio", 
-        "truck_vehicle_ratio", 
-        "motor_vehicle_ratio"
-    ]
 }
 
 if __name__ == "__main__":

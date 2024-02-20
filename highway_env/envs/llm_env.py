@@ -232,10 +232,14 @@ class LLMEnv(AbstractEnv):
 
         :param new_config: A dictionary containing new configuration parameters.
         """
+        new_config = ast.literal_eval(new_config)        
+        new_config_check = new_config.get("properties")
 
-        new_config = ast.literal_eval(new_config)
+        if new_config_check == None:
+            self.config.update(new_config)
+        else:
+            self.config.update(new_config_check)
 
-        self.config.update(new_config)
         print("FINAL UPDATED CONFIG PLEASE DOUBLE CHECK", self.config)
 
 
@@ -279,8 +283,8 @@ class LLMEnv(AbstractEnv):
 
         return r_lon, r_lat, TTC
 
-    def detect_edge_case(ego_vehicle, other_vehicle):
-        r_lon, r_lat, TTC = calculate_risk_indices(ego_vehicle, other_vehicle)
+    def detect_edge_case(self, ego_vehicle, other_vehicle):
+        r_lon, r_lat, TTC = self.calculate_risk_indices(ego_vehicle, other_vehicle)
         threshold_lon = 0.8  # High risk of front or rear collision
         threshold_lat = 0.8  # High risk of side collision or lane departure
         threshold_TTC = 2.0  # Seconds before a collision
