@@ -239,7 +239,7 @@ class LLMEnv(AbstractEnv):
         print("FINAL UPDATED CONFIG PLEASE DOUBLE CHECK", self.config)
 
 
-    def calculate_risk_indices(self, ego_vehicle: IDMVehicle, other_vehicle: IDMVehicle) -> Tuple[float, float, float]:
+    def calculate_risk_indices(self, ego_vehicle: Vehicle, other_vehicle: Vehicle) -> Tuple[float, float, float]:
         # Constants from IDMVehicle settings
         rho = IDMVehicle.TIME_WANTED  # Response time of the rear vehicle
         a_max_accel = IDMVehicle.COMFORT_ACC_MAX  # Desired maximum acceleration
@@ -278,8 +278,6 @@ class LLMEnv(AbstractEnv):
             r_lat = 1 - lateral_distance / lateral_distance_safe
 
         return r_lon, r_lat, TTC
-
-
 
     def detect_edge_case(ego_vehicle, other_vehicle):
         r_lon, r_lat, TTC = calculate_risk_indices(ego_vehicle, other_vehicle)
