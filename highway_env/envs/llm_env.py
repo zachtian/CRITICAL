@@ -239,3 +239,54 @@ class LLMEnv(AbstractEnv):
         print("FINAL UPDATED CONFIG PLEASE DOUBLE CHECK", self.config)
 
 
+    def calculate_risk_indices(self, ego_vehicle: IDMVehicle, other_vehicle: IDMVehicle) -> Tuple[float, float, float]:
+        # Constants from IDMVehicle settings
+        rho = IDMVehicle.TIME_WANTED  # Response time of the rear vehicle
+        a_max_accel = IDMVehicle.COMFORT_ACC_MAX  # Desired maximum acceleration
+        a_max_brake = IDMVehicle.COMFORT_ACC_MIN  # Desired maximum deceleration
+        distance_wanted = 2.0  # Desired jam distance to the front vehicle
+
+        # Relative parameters for longitudinal dynamics
+        v_r = ego_vehicle.speed  # Velocity of the rear vehicle (ego vehicle)
+        v_f = other_vehicle.speed  # Velocity of the front vehicle
+        d_lon = other_vehicle.position[0] - ego_vehicle.position[0] - other_vehicle.LENGTH  # Longitudinal distance
+
+        # Use the existing TTC computation from your environment
+        TTC = self.env.compute_TTC(ego_vehicle, other_vehicle)
+
+        # Safe longitudinal distance calculation
+        d_lon_min = max(v_r * rho + distance_wanted + (v_r**2) / (2 * abs(a_max_brake)) - (v_f**2) / (2 * abs(a_max_brake)), 0)
+
+        # Longitudinal risk index calculation
+        if d_lon >= d_lon_min:
+            r_lon = 0
+        else:
+            r_lon = 1 - d_lon / d_lon_min
+
+        # Relative parameters for lateral dynamics
+        lateral_distance_wanted = IDMVehicle.LATERAL_DISTANCE_WANTED  # Placeholder
+        lateral_velocity = abs(ego_vehicle.velocity[1])  # Lateral speed of the ego vehicle, placeholder calculation
+        lateral_distance = abs(ego_vehicle.position[1] - other_vehicle.position[1])  # Lateral distance
+
+        # Safe lateral distance calculation
+        lateral_distance_safe = lateral_distance_wanted + lateral_velocity * rho
+
+        # Lateral risk index calculation
+        if lateral_distance >= lateral_distance_safe:
+            r_lat = 0
+        else:
+            r_lat = 1 - lateral_distance / lateral_distance_safe
+
+        return r_lon, r_lat, TTC
+
+
+
+    def detect_edge_case(ego_vehicle, other_vehicle):
+        r_lon, r_lat, TTC = calculate_risk_indices(ego_vehicle, other_vehicle)
+        threshold_lon = 0.8  # High risk of front or rear collision
+        threshold_lat = 0.8  # High risk of side collision or lane departure
+        threshold_TTC = 2.0  # Seconds before a collision
+        # Define your edge case criteria
+        is_edge_case = r_lon > threshold_lon or r_lat > threshold_lat or TTC < threshold_TTC
+
+        return is_edge_case
