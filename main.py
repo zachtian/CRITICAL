@@ -1,5 +1,5 @@
 import gymnasium as gym
-from stable_baselines3 import DQN
+from stable_baselines3 import DQN, PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.save_util import save_to_pkl
@@ -15,6 +15,7 @@ from langchain_community.chat_models import ChatOllama
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from trasnformer_utils import CustomExtractor, attention_network_kwargs
 
 recent_crash_types = ['front', 'front-edge', 'side-on', "rear", "rear-edge"]
 
@@ -170,11 +171,9 @@ class FailureAnalysisCallback(BaseCallback):
 
     def update_environment_config(self, new_config):
         parsed_config = ast.literal_eval(new_config)
-        if isinstance(self.env, VecVideoRecorder):
-            inner_env = self.env.envs[0]
-            inner_env.unwrapped.update_env_config(new_config)
-        else:
-            self.env.unwrapped.update_env_config(new_config)
+        inner_env = self.env.envs[0]
+        inner_env.unwrapped.update_env_config(new_config)
+
         self.write_config_to_json(parsed_config, self.config_file)
 
     def write_failure_stats_to_csv(self):
@@ -272,7 +271,8 @@ if __name__ == "__main__":
 
     REAL_TIME_RENDERING = False
     USE_LLM = False
-    
+    POLICY_NET = 'mlp'
+    RL_MODEL = 'PPO'
     if not os.path.exists('experiments'):
         os.makedirs('experiments', exist_ok=True)
 
@@ -283,29 +283,54 @@ if __name__ == "__main__":
     experiment_path = os.path.join('experiments', f"exp_{next_exp_number}")
     os.makedirs(experiment_path, exist_ok=True)
 
+    env = DummyVecEnv([lambda: gym.make('llm-v0', render_mode='rgb_array')])
     if REAL_TIME_RENDERING:
-        env = DummyVecEnv([lambda: gym.make('llm-v0', render_mode='rgb_array')])
         env = VecVideoRecorder(env, "videos", 
                                     record_video_trigger=lambda step: step % 100 == 0,
                                     video_length=50, 
-                                    name_prefix="dqn_highway")
-    else:
-        env = gym.make('llm-v0')
+                                    name_prefix=f"{RL_MODEL}_highway")
 
-    model = DQN('MlpPolicy', env,
-                policy_kwargs=dict(net_arch=[256, 256]),
-                learning_rate=1e-3,
-                buffer_size=30000,
-                learning_starts=200,
-                batch_size=256,
-                gamma=0.8,
-                train_freq=1,
-                gradient_steps=1,
-                target_update_interval=50,
-                exploration_fraction=0.5,
-                verbose=1,
-                #tensorboard_log='logs',
-                )
+    if POLICY_NET == 'transformer':
+        policy_kwargs = dict(
+                features_extractor_class=CustomExtractor,
+                features_extractor_kwargs=attention_network_kwargs,
+        )
+    elif POLICY_NET == 'mlp':
+        if RL_MODEL == 'DQN':
+            policy_kwargs=dict(net_arch=[256, 256])
+        else:
+            policy_kwargs=dict(net_arch=[dict(pi=[256, 256], vf=[256, 256])])
+
+    if RL_MODEL == 'DQN':
+        model = DQN(
+            "MlpPolicy", 
+            env,
+            policy_kwargs=policy_kwargs,
+            learning_rate=1e-3,
+            buffer_size=30000,
+            learning_starts=200,
+            batch_size=256,
+            gamma=0.8,
+            train_freq=1,
+            gradient_steps=1,
+            target_update_interval=50,
+            exploration_fraction=0.5,
+            verbose=1,
+            #tensorboard_log='logs',
+        )
+    else:
+        model = PPO(
+            "MlpPolicy",
+            env,
+            policy_kwargs=policy_kwargs,
+            n_steps=256 * 12 // 24,
+            batch_size=256,
+            n_epochs=10,
+            learning_rate=5e-4,
+            gamma=0.8,
+            verbose=2,
+            tensorboard_log='logs',
+        )
 
     callback = FailureAnalysisCallback(env, experiment_path, USE_LLM)
     model.learn(int(2e5), callback=callback)
