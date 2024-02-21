@@ -37,6 +37,8 @@ class FailureAnalysisCallback(BaseCallback):
         self.episode_length = 0
         self.config_history = []
         self.reward_history = []
+        self.edge_case_lon_and_lat_count = 0
+        self.edge_case_TTC_near_miss_count = 0
 
     def _on_step(self) -> bool:
         self.step_counter += 1
@@ -53,7 +55,13 @@ class FailureAnalysisCallback(BaseCallback):
             crash_type = infos[0].get('crash_type') 
 
         if self.last_obs is None:
-            self.last_obs = new_obs  
+            self.last_obs = new_obs
+
+        near_miss_occurred, nearest_vehicle = self.env.unwrapped.calculate_TTC_near_miss()
+        is_edge_case_lon_and_lat, is_edge_case_TTC_near_miss = self.env.unwrapped.detect_edge_case(nearest_vehicle[0], near_miss_occurred)
+
+        self.edge_case_lon_and_lat_count += is_edge_case_lon_and_lat
+        self.edge_case_TTC_near_miss_count += is_edge_case_TTC_near_miss
 
         if dones[0]:  
             failure_info = infos[0]
@@ -64,6 +72,7 @@ class FailureAnalysisCallback(BaseCallback):
             self.episode_length = 0
 
             if failure_type is not None:
+                print("FAILED EPISODE")
                 self.failures.append({
                     "failure_type": failure_type,
                     "crash_type": crash_type,
@@ -76,6 +85,7 @@ class FailureAnalysisCallback(BaseCallback):
 
         self.last_obs = new_obs
         if self.step_counter % 100 == 0:
+
             if self.use_llm:
                 self.write_failure_stats_to_csv()
                 dumps = json.dumps(env_json_schema, indent=2)
@@ -133,6 +143,15 @@ class FailureAnalysisCallback(BaseCallback):
             else:
                 NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
                 self.update_environment_config(NGSIM_config)
+
+            edge_case_values_dict = {
+                "edge_case_count_for_lat_and_lon": self.edge_case_lon_and_lat_count,
+                "edge_case_count_for_TTC_near_miss": self.edge_case_TTC_near_miss_count              
+            }
+            self.write_config_to_json(edge_case_values_dict, self.config_file)
+
+            self.edge_case_lon_and_lat_count = 0
+            self.edge_case_TTC_near_miss_count = 0
 
         if REAL_TIME_RENDERING:
             self.model.env.render()

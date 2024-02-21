@@ -134,6 +134,7 @@ def compute_ttc_grid(
                 time_to_collision = distance / utils.not_zero(
                     ego_speed - other_projected_speed
                 )
+
                 if time_to_collision < 0:
                     continue
                 if env.road.network.is_connected_road(
@@ -157,7 +158,42 @@ def compute_ttc_grid(
                             grid[speed_index, lane, time] = np.maximum(
                                 grid[speed_index, lane, time], cost
                             )
+
+                            # grid[speed_index, lane, time] = time_to_collision
     return grid
+
+
+def compute_ttc_grid_new(
+    env: "AbstractEnv",
+    vehicle: Optional[Vehicle] = None,
+) -> np.ndarray:
+    """
+    Compute a 2D matrix of predicted minimum time-to-collision for each lane.
+
+    :param env: environment
+    :param vehicle: the observer vehicle
+    :return: a 2D matrix where each row represents a lane and the value is the minimum time-to-collision
+    """
+    vehicle = vehicle or env.vehicle
+    road_lanes = env.road.network.all_side_lanes(vehicle.lane_index)
+    ttc_matrix = np.full((len(road_lanes), 1), np.inf)  # Initialize with infinity
+
+    for lane_index, lane in enumerate(road_lanes):
+        for other in env.road.vehicles:
+            if other is vehicle:
+                continue
+
+            # Check if the other vehicle is in the same lane
+            if other.lane_index == lane:
+                margin = other.LENGTH / 2 + vehicle.LENGTH / 2
+                distance = vehicle.lane_distance_to(other) - margin
+                relative_speed = vehicle.speed - other.speed
+
+                if relative_speed > 0:  # Closing in on the vehicle
+                    ttc = distance / relative_speed
+                    ttc_matrix[lane_index, 0] = min(ttc_matrix[lane_index, 0], ttc)
+
+    return ttc_matrix
 
 
 def transition_model(h: int, i: int, j: int, a: int, grid: np.ndarray) -> np.ndarray:
