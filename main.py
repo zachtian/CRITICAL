@@ -2,6 +2,8 @@ import gymnasium as gym
 from stable_baselines3 import DQN
 from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.save_util import save_to_pkl
+
 import os
 import csv
 import json
@@ -74,7 +76,7 @@ class FailureAnalysisCallback(BaseCallback):
                 })
 
         self.last_obs = new_obs
-        if self.step_counter % 100 == 0:
+        if self.step_counter % 500 == 0:
             if self.use_llm:
                 self.write_failure_stats_to_csv()
                 dumps = json.dumps(env_json_schema, indent=2)
@@ -168,7 +170,11 @@ class FailureAnalysisCallback(BaseCallback):
 
     def update_environment_config(self, new_config):
         parsed_config = ast.literal_eval(new_config)
-        self.env.unwrapped.update_env_config(new_config)
+        if isinstance(self.env, VecVideoRecorder):
+            inner_env = self.env.envs[0]
+            inner_env.unwrapped.update_env_config(new_config)
+        else:
+            self.env.unwrapped.update_env_config(new_config)
         self.write_config_to_json(parsed_config, self.config_file)
 
     def write_failure_stats_to_csv(self):
@@ -265,7 +271,7 @@ if __name__ == "__main__":
         os.makedirs("videos")
 
     REAL_TIME_RENDERING = False
-    USE_LLM = True
+    USE_LLM = False
     
     if not os.path.exists('experiments'):
         os.makedirs('experiments', exist_ok=True)
@@ -303,5 +309,6 @@ if __name__ == "__main__":
 
     callback = FailureAnalysisCallback(env, experiment_path, USE_LLM)
     model.learn(int(2e5), callback=callback)
+    model.save(os.path.join(experiment_path, 'trained_model'))
 
     env.close()
