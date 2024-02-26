@@ -10,9 +10,15 @@ from highway_env.road.road import Road, RoadNetwork
 from highway_env.utils import near_split
 from highway_env.vehicle.controller import ControlledVehicle
 from highway_env.vehicle.kinematics import Vehicle
-from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle, MotorVehicle
+from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle, MotorVehicle, RegularIDMVehicle
 
 Observation = np.ndarray
+
+def calculate_speed(vehicle_class):
+    params = vehicle_class.params
+    speed = np.random.normal(params['speed_mean'], params['speed_std'])
+    speed = max(0, speed)
+    return speed
 
 class LLMEnv(AbstractEnv):
     """
@@ -50,7 +56,6 @@ class LLMEnv(AbstractEnv):
                 "aggressive_vehicle_ratio": 0.3, 
                 "defensive_vehicle_ratio": 0.2,
                 "truck_vehicle_ratio": 0.1,
-                "motor_vehicle_ratio": 0.2,
             }
         )
         return config
@@ -70,17 +75,15 @@ class LLMEnv(AbstractEnv):
         )
 
     def _create_vehicles(self) -> None:
-        other_vehicles_type = utils.class_from_path(self.config["other_vehicles_type"])
         total_vehicles = self.config["vehicles_count"]
         num_aggressive = int(total_vehicles * self.config["aggressive_vehicle_ratio"])
         num_defensive = int(total_vehicles * self.config["defensive_vehicle_ratio"])
         num_truck = int(total_vehicles * self.config["truck_vehicle_ratio"])
-        num_motor = int(total_vehicles * self.config["motor_vehicle_ratio"])
         num_normal = total_vehicles - num_aggressive - num_defensive
         self.controlled_vehicles = []
 
         for _ in range(total_vehicles // 2):
-            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_motor, num_normal, other_vehicles_type)
+            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_normal)
 
         ego_vehicle = Vehicle.create_random(
             self.road,
@@ -95,25 +98,24 @@ class LLMEnv(AbstractEnv):
         self.road.vehicles.append(ego_vehicle)
 
         for _ in range(total_vehicles // 2, total_vehicles):
-            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_motor, num_normal, other_vehicles_type)
+            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_normal)
 
-    def add_random_vehicle(self, num_aggressive, num_defensive, num_truck, num_motor, num_normal, other_vehicles_type):
+
+    def add_random_vehicle(self, num_aggressive, num_defensive, num_truck, num_normal):
         total_vehicles = num_aggressive + num_defensive + num_normal
 
         # Randomly select vehicle type based on their proportions
         rand_choice = random.randint(1, total_vehicles)
         if rand_choice <= num_aggressive:
-            vehicle = AggressiveIDMVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
+            vehicle = AggressiveIDMVehicle.create_random(self.road, speed=calculate_speed(AggressiveIDMVehicle), spacing=1 / self.config["vehicles_density"])
         elif rand_choice <= num_aggressive + num_defensive:
-            vehicle = DefensiveIDMVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
+            vehicle = DefensiveIDMVehicle.create_random(self.road, speed=calculate_speed(DefensiveIDMVehicle), spacing=1 / self.config["vehicles_density"])
         elif rand_choice <= num_aggressive + num_defensive + num_truck:
             vehicle = TruckVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
-        elif rand_choice <= num_aggressive + num_defensive + num_truck + num_motor:
-            vehicle = MotorVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
         else:
-            vehicle = other_vehicles_type.create_random(self.road, spacing=1 / self.config["vehicles_density"])
-
+            vehicle = RegularIDMVehicle.create_random(self.road, speed=calculate_speed(RegularIDMVehicle), spacing=1 / self.config["vehicles_density"])
         self.road.vehicles.append(vehicle)
+
 
     def _reward(self, action: Action) -> float:
         """
@@ -233,7 +235,7 @@ class LLMEnv(AbstractEnv):
         :param new_config: A dictionary containing new configuration parameters.
         """
 
-        new_config = ast.literal_eval(new_config)
+        #new_config = ast.literal_eval(new_config)
 
         self.config.update(new_config)
         print("FINAL UPDATED CONFIG PLEASE DOUBLE CHECK", self.config)

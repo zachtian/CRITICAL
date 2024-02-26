@@ -5,7 +5,7 @@ import numpy as np
 import pygame
 
 from highway_env.utils import Vector
-from highway_env.vehicle.behavior import IDMVehicle, LinearVehicle, AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle, MotorVehicle
+from highway_env.vehicle.behavior import IDMVehicle, LinearVehicle, AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle, MotorVehicle, RegularIDMVehicle
 from highway_env.vehicle.controller import MDPVehicle
 from highway_env.vehicle.dynamics import BicycleVehicle
 from highway_env.vehicle.kinematics import Vehicle
@@ -245,7 +245,7 @@ class VehicleGraphics(object):
             color = cls.MOTOR_COLOR
         elif isinstance(vehicle, LinearVehicle):
             color = cls.YELLOW
-        elif isinstance(vehicle, IDMVehicle):
+        elif isinstance(vehicle, IDMVehicle) or isinstance(vehicle, RegularIDMVehicle):
             color = cls.BLUE
         elif isinstance(vehicle, MDPVehicle):
             color = cls.EGO_COLOR

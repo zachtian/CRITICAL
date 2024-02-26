@@ -580,23 +580,36 @@ class DefensiveVehicle(LinearVehicle):
         2.0,
     ]
 
-class AggressiveIDMVehicle(IDMVehicle):
+
+class RegularIDMVehicle(IDMVehicle):
+    params = {'speed_mean': 33.3, 'speed_std': 3.2, 'acc_mean': 0.14, 'acc_std': 0.08}
     def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
         super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
-        self.COMFORT_ACC_MAX = 4.0  
-        self.DISTANCE_WANTED = 3.0 
-        self.LANE_CHANGE_MIN_ACC_GAIN = 0.1 
-        self.LANE_CHANGE_DELAY = 0.5  
-        self.POLITENESS = 0.1  
+        self.COMFORT_ACC_MAX = 3.2  # Adjusted based on average acceleration of Cluster 0
+        self.DISTANCE_WANTED = 5.0  # Moderate distance
+        self.LANE_CHANGE_MIN_ACC_GAIN = 0.2
+        self.LANE_CHANGE_DELAY = 1.0
+        self.POLITENESS = 0.3
+
+class AggressiveIDMVehicle(IDMVehicle):
+    params = {'speed_mean': 33.5, 'speed_std': 4.6, 'acc_mean': 0.45, 'acc_std': 0.19}
+    def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
+        super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
+        self.COMFORT_ACC_MAX = 4.5  # Higher acceleration for aggressive driving
+        self.DISTANCE_WANTED = 2.0  # Shorter following distance
+        self.LANE_CHANGE_MIN_ACC_GAIN = 0.3
+        self.LANE_CHANGE_DELAY = 0.3  # More frequent lane changes
+        self.POLITENESS = 0.05  # Less politeness
 
 class DefensiveIDMVehicle(IDMVehicle):
+    params = {'speed_mean': 23.7, 'speed_std': 3.8, 'acc_mean': 0.11, 'acc_std': 0.08}
     def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
         super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
-        self.COMFORT_ACC_MAX = 2.0  
-        self.DISTANCE_WANTED = 7.0  
-        self.LANE_CHANGE_MIN_ACC_GAIN = 0.5  
-        self.LANE_CHANGE_DELAY = 3.0  
-        self.POLITENESS = 0.9  
+        self.COMFORT_ACC_MAX = 2.0  # Lower maximum acceleration
+        self.DISTANCE_WANTED = 7.0  # Increased following distance
+        self.LANE_CHANGE_MIN_ACC_GAIN = 0.5
+        self.LANE_CHANGE_DELAY = 3.0  # Less frequent lane changes
+        self.POLITENESS = 0.9  # More politeness
 
 class TruckVehicle(IDMVehicle):
     def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):

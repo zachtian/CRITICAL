@@ -1,5 +1,0 @@
-SixHourBlock,Vehicle_Type,Driving_Behavior
-00:00,"{'Auto': 597, 'Truck': 10}","{'Aggressive': 370, 'Regular': 231, 'Defensive': 6}"
-06:00,"{'Auto': 795, 'Truck': 20, 'Motorcycle': 1}","{'Aggressive': 364, 'Regular': 352, 'Defensive': 100}"
-12:00,"{'Auto': 614, 'Truck': 12}","{'Aggressive': 350, 'Regular': 235, 'Defensive': 41}"
-18:00,"{'Auto': 594, 'Truck': 14}","{'Aggressive': 408, 'Regular': 165, 'Defensive': 35}"

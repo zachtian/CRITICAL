@@ -28,12 +28,11 @@ class FailureAnalysisCallback(BaseCallback):
         self.step_counter = 0  
         self.failure_file = os.path.join(experiment_path, 'failures.csv')
         self.config_file = os.path.join(experiment_path, 'config.csv')
-        self.NGSIM_df = pd.read_csv('NGSIM_data.csv')
+        self.NGSIM_df = 'highwayenv_scenario_data.csv'
         NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
         self.update_environment_config(NGSIM_config)
         self.use_llm = USE_LLM
         self.attempts_to_generate_valid_config = 100
-        self.format_check = False
         self.episode_rewards = []
         self.episode_lengths = []
         self.cumulative_reward = 0
@@ -102,7 +101,7 @@ class FailureAnalysisCallback(BaseCallback):
                         HumanMessage(content=f"Recent Failures: {Counter(recent_crash_types)}"),
                         HumanMessage(content=f"Previous Episode Config: {self.config_history[-2]}"),
                         HumanMessage(content=f"Previous Episode Lengths: {self.reward_history[-2]}"),
-                        HumanMessage(content="Based on this analysis, provide modifications only for the following properties in the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio, motor_vehicle_ratio. Avoid adding new parameters or unrelated content.")
+                        HumanMessage(content="Based on this analysis, provide modifications only for the following properties in the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Avoid adding new parameters or unrelated content.")
                     ]
                 else:
                     messages = [
@@ -111,7 +110,7 @@ class FailureAnalysisCallback(BaseCallback):
                         HumanMessage(content=f"Real-World Traffic Data (NGSIM_config): {NGSIM_config}"),
                         HumanMessage(content=f"Simulation Environment Config: {small_config}"),
                         HumanMessage(content=f"Recent Failures: {Counter(recent_crash_types)}"),
-                        HumanMessage(content="Based on this analysis, provide modifications only for the following properties in the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio, motor_vehicle_ratio. Avoid adding new parameters or unrelated content.")
+                        HumanMessage(content="Based on this analysis, provide modifications only for the following properties in the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Avoid adding new parameters or unrelated content.")
                     ]               
                 prompt = ChatPromptTemplate.from_messages(messages)
                 chain = prompt | llm | StrOutputParser()
@@ -121,17 +120,11 @@ class FailureAnalysisCallback(BaseCallback):
                 self.failures.clear()
 
                 new_config = self.generate_new_config_file(small_config, response)
-                print(new_config)
+                try:
+                    self.update_environment_config(new_config)
+                except:
+                    import pdb; pdb.set_trace()
 
-                for i in range(self.attempts_to_generate_valid_config):
-                    if self.format_check == False:
-                        try:
-                            self.update_environment_config(new_config)
-                            self.format_check = True
-                        except:
-                            print("The chosen LLM did not appropriately format its environment configuration suggestions, trying again.")
-                    else:
-                        break
             else:
                 NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
                 self.update_environment_config(NGSIM_config)
@@ -164,15 +157,16 @@ class FailureAnalysisCallback(BaseCallback):
         return response_for_updated_config
 
     def get_small_config(self):
-        full_config = dict(self.env.unwrapped.config)
-        small_config = {k: full_config[k] for k in ('vehicles_density', 'aggressive_vehicle_ratio', 'defensive_vehicle_ratio', 'truck_vehicle_ratio', 'motor_vehicle_ratio')}
+        inner_env = self.env.envs[0]
+        full_config = dict(inner_env.unwrapped.config)
+        small_config = {k: full_config[k] for k in ('vehicles_density', 'aggressive_vehicle_ratio', 'defensive_vehicle_ratio', 'truck_vehicle_ratio')}
 
         return small_config
 
     def update_environment_config(self, new_config):
-        parsed_config = ast.literal_eval(new_config)
+        parsed_config = json.loads(new_config[new_config.find('{'):new_config.rfind('}') + 1])
         inner_env = self.env.envs[0]
-        inner_env.unwrapped.update_env_config(new_config)
+        inner_env.unwrapped.update_env_config(parsed_config)
 
         self.write_config_to_json(parsed_config, self.config_file)
 
@@ -215,30 +209,27 @@ class FailureAnalysisCallback(BaseCallback):
         with open(file_name, 'w') as json_file:
             json.dump(existing_data, json_file, indent=4)
 
-def generate_highwayenv_config(df):
+def generate_highwayenv_config(csv_file):
+    df = pd.read_csv(csv_file)
     selected_row = df.sample(n=1).iloc[0]
 
-    driving_style_dict = ast.literal_eval(selected_row['Driving_Behavior'])
-    vehicle_class_dict = ast.literal_eval(selected_row['Vehicle_Type'])
-    aggressive_vehicle_counts = driving_style_dict.get('Aggressive', 0)
-    defensive_vehicle_counts = driving_style_dict.get('Defensive', 0)
-    regular_vehicle_counts = driving_style_dict.get('Regular', 0)
+    aggressive_vehicle_counts = selected_row['num_aggressive']
+    defensive_vehicle_counts = selected_row['num_defensive']
+    regular_vehicle_counts = selected_row['num_regular']
     total_vehicles = aggressive_vehicle_counts + defensive_vehicle_counts + regular_vehicle_counts
+
     # Calculate ratios
     aggressive_vehicle_ratio = float(aggressive_vehicle_counts / total_vehicles)
     defensive_vehicle_ratio = float(defensive_vehicle_counts / total_vehicles)
-    truck_vehicle_ratio = float(vehicle_class_dict.get('Truck', 0) / total_vehicles)
-    motor_vehicle_ratio = float(vehicle_class_dict.get('Motorcycle', 0) / total_vehicles)
+    truck_vehicle_ratio = float(selected_row['num_trucks'] / total_vehicles)
 
     config = {
         "aggressive_vehicle_ratio": aggressive_vehicle_ratio,
         "defensive_vehicle_ratio": defensive_vehicle_ratio,
         "truck_vehicle_ratio": truck_vehicle_ratio,
-        "motor_vehicle_ratio": motor_vehicle_ratio,
     }
 
     config_json = json.dumps(config, indent=4)
-
     return config_json
 
 llm = ChatOllama(
@@ -253,15 +244,13 @@ env_json_schema = {
         "vehicles_density": {"type": "number"},
         "aggressive_vehicle_ratio": {"type": "number"},
         "defensive_vehicle_ratio": {"type": "number"},
-        "truck_vehicle_ratio": {"type": "number"},
-        "motor_vehicle_ratio": {"type": "number"}
+        "truck_vehicle_ratio": {"type": "number"}
     },
     "required": [
         "vehicles_density",
         "aggressive_vehicle_ratio", 
         "defensive_vehicle_ratio", 
-        "truck_vehicle_ratio", 
-        "motor_vehicle_ratio"
+        "truck_vehicle_ratio"
     ]
 }
 
@@ -270,17 +259,17 @@ if __name__ == "__main__":
         os.makedirs("videos")
 
     REAL_TIME_RENDERING = False
-    USE_LLM = False
+    USE_LLM = True
     POLICY_NET = 'mlp'
     RL_MODEL = 'PPO'
     if not os.path.exists('experiments'):
         os.makedirs('experiments', exist_ok=True)
 
     next_exp_number = 1
-    while os.path.exists(os.path.join('experiments', f"exp_{next_exp_number}")):
+    while os.path.exists(os.path.join('experiments', f"exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}")):
         next_exp_number += 1
 
-    experiment_path = os.path.join('experiments', f"exp_{next_exp_number}")
+    experiment_path = os.path.join('experiments', f"exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}")
     os.makedirs(experiment_path, exist_ok=True)
 
     env = DummyVecEnv([lambda: gym.make('llm-v0', render_mode='rgb_array')])
@@ -299,7 +288,9 @@ if __name__ == "__main__":
         if RL_MODEL == 'DQN':
             policy_kwargs=dict(net_arch=[256, 256])
         else:
-            policy_kwargs=dict(net_arch=[dict(pi=[256, 256], vf=[256, 256])])
+            policy_kwargs = {
+                "net_arch": dict(pi=[256, 256], vf=[256, 256]) 
+                }
 
     if RL_MODEL == 'DQN':
         model = DQN(
@@ -323,7 +314,7 @@ if __name__ == "__main__":
             "MlpPolicy",
             env,
             policy_kwargs=policy_kwargs,
-            n_steps=256 * 12 // 24,
+            n_steps=256,
             batch_size=256,
             n_epochs=10,
             learning_rate=5e-4,
