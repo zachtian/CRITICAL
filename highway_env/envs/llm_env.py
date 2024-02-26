@@ -12,6 +12,7 @@ from highway_env.vehicle.controller import ControlledVehicle
 from highway_env.vehicle.kinematics import Vehicle
 from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle, MotorVehicle, RegularIDMVehicle, IDMVehicle
 from highway_env.envs.common.observation import TimeToCollisionObservation
+np.seterr(divide='ignore', invalid='ignore')
 
 Observation = np.ndarray
 

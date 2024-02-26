@@ -168,7 +168,7 @@ class TimeToCollisionObservation(ObservationType):
     def nearest_vehicles(self) -> list:
         nearest_vehicles = self.env.road.close_objects_to(
             vehicle=self.observer_vehicle,
-            distance=1000,
+            distance=500,
             count=1,
             see_behind=True,
             sort=True,
