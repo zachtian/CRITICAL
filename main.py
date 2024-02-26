@@ -28,9 +28,9 @@ class FailureAnalysisCallback(BaseCallback):
         self.step_counter = 0  
         self.failure_file = os.path.join(experiment_path, 'failures.csv')
         self.config_file = os.path.join(experiment_path, 'config.csv')
-        self.NGSIM_df = 'highwayenv_scenario_data.csv'
-        NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
-        self.update_environment_config(NGSIM_config)
+        self.HIGHD_df = 'highwayenv_scenario_data.csv'
+        HIGHD_config = generate_highwayenv_config(self.HIGHD_df)
+        self.update_environment_config(HIGHD_config)
         self.use_llm = USE_LLM
         self.episode_rewards = []
         self.episode_lengths = []
@@ -92,48 +92,49 @@ class FailureAnalysisCallback(BaseCallback):
                 recent_crash_types = [failure['crash_type'] for failure in self.failures]
                 
                 small_config = self.get_small_config()
-                NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
+                HIGHD_config = generate_highwayenv_config(self.HIGHD_df)
 
                 self.config_history.append(small_config)
                 self.reward_history.append({
-                    "episode_rewards": round(np.mean(self.episode_rewards),2),
+                    "episode_rewards": round(np.mean(self.episode_rewards), 2),
                     "episode_lengths": np.mean(self.episode_lengths)
                 })
                 self.episode_rewards = []
                 self.episode_lengths = []
+
                 messages = [
                     HumanMessage(content="Please analyze the following data and suggest modifications for scenario generation, then provide the updated configuration as a Python dictionary:"),
                     HumanMessage(content=f"JSON Schema: {dumps}"),
-                    HumanMessage(content=f"Real-World Traffic Data (NGSIM_config): {NGSIM_config}"),
+                    HumanMessage(content=f"Real-World Traffic Data (HIGHD_config): {HIGHD_config}"),
                     HumanMessage(content=f"Simulation Environment Config: {small_config}"),
                     HumanMessage(content=f"Recent Failures: {Counter(recent_crash_types)}"),
+                    HumanMessage(content=f"Longitude and Latitude-based Edge Cases: {float(self.edge_case_lon_and_lat_count)}"),
+                    HumanMessage(content=f"Time to Collision (TTC) Near Miss Cases: {float(self.edge_case_TTC_near_miss_count)}"),
                 ]
                 if len(self.config_history) > 1:
                     messages.append(HumanMessage(content=f"Previous Episode Config: {self.config_history[-2]}"))
                     messages.append(HumanMessage(content=f"Previous Episode Lengths: {self.reward_history[-2]}"))
-                messages.append(HumanMessage(content="Based on this analysis, provide modifications only for the following properties in the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Avoid adding new parameters or unrelated content."))
-
+                messages.append(
+                    HumanMessage(content="Based on this analysis and the need for more diverse edge cases, particularly in longitudinal and lateral dynamics and TTC-based near-miss scenarios, please suggest modifications to the following properties of the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Provide your response as a JSON dictionary containing only these four elements.")
+                )
                 prompt = ChatPromptTemplate.from_messages(messages)
                 chain = prompt | llm | StrOutputParser()
 
-                response = chain.invoke({"dumps": dumps})
-                print('LLM Suggestion:', response)
                 self.failures.clear()
-
-                edge_case_values_dict = {
-                    "edge_case_count_for_lat_and_lon": float(self.edge_case_lon_and_lat_count),
-                    "edge_case_count_for_TTC_near_miss": float(self.edge_case_TTC_near_miss_count)              
-                }
-                self.write_config_to_json(edge_case_values_dict, self.config_file, optional_index=(self.loop_count-1))
-
                 self.edge_case_lon_and_lat_count = 0
                 self.edge_case_TTC_near_miss_count = 0
-                
-                new_config = self.generate_new_config_file(small_config, response)
-                try:
-                    self.update_environment_config(new_config)
-                except:
-                    import pdb; pdb.set_trace()
+                            
+                # Attempt to update the environment configuration directly
+                for attempt in range(5):
+                    try:
+                        response = chain.invoke({"dumps": dumps})
+                        print('LLM Suggestion:', response)
+                        self.update_environment_config(response)
+                        break
+                    except Exception as e:
+                        print("Error updating environment config:", e)
+                        if attempt == 4:
+                            import pdb; pdb.set_trace()
             else:
                 edge_case_values_dict = {
                     "edge_case_count_for_lat_and_lon": float(self.edge_case_lon_and_lat_count),
@@ -143,8 +144,8 @@ class FailureAnalysisCallback(BaseCallback):
                 self.edge_case_lon_and_lat_count = 0
                 self.edge_case_TTC_near_miss_count = 0
 
-                NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
-                self.update_environment_config(NGSIM_config)
+                HIGHD_config = generate_highwayenv_config(self.HIGHD_df)
+                self.update_environment_config(HIGHD_config)
 
         if REAL_TIME_RENDERING:
             self.model.env.render()
@@ -244,7 +245,7 @@ def generate_highwayenv_config(csv_file):
     return config_json
 
 llm = ChatOllama(
-    model="llama2:13b-chat",
+    model="llama2:70b",
 )
 
 env_json_schema = {
