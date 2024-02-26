@@ -32,7 +32,6 @@ class FailureAnalysisCallback(BaseCallback):
         NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
         self.update_environment_config(NGSIM_config)
         self.use_llm = USE_LLM
-        self.attempts_to_generate_valid_config = 100
         self.episode_rewards = []
         self.episode_lengths = []
         self.cumulative_reward = 0
@@ -102,26 +101,18 @@ class FailureAnalysisCallback(BaseCallback):
                 })
                 self.episode_rewards = []
                 self.episode_lengths = []
+                messages = [
+                    HumanMessage(content="Please analyze the following data and suggest modifications for scenario generation, then provide the updated configuration as a Python dictionary:"),
+                    HumanMessage(content=f"JSON Schema: {dumps}"),
+                    HumanMessage(content=f"Real-World Traffic Data (NGSIM_config): {NGSIM_config}"),
+                    HumanMessage(content=f"Simulation Environment Config: {small_config}"),
+                    HumanMessage(content=f"Recent Failures: {Counter(recent_crash_types)}"),
+                ]
                 if len(self.config_history) > 1:
-                    messages = [
-                        HumanMessage(content="Please analyze the following data and suggest modifications for scenario generation:"),
-                        HumanMessage(content=f"JSON Schema: {dumps}"),
-                        HumanMessage(content=f"Real-World Traffic Data (NGSIM_config): {NGSIM_config}"),
-                        HumanMessage(content=f"Simulation Environment Config: {small_config}"),
-                        HumanMessage(content=f"Recent Failures: {Counter(recent_crash_types)}"),
-                        HumanMessage(content=f"Previous Episode Config: {self.config_history[-2]}"),
-                        HumanMessage(content=f"Previous Episode Lengths: {self.reward_history[-2]}"),
-                        HumanMessage(content="Based on this analysis, provide modifications only for the following properties in the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Avoid adding new parameters or unrelated content.")
-                    ]
-                else:
-                    messages = [
-                        HumanMessage(content="Please analyze the following data and suggest modifications for scenario generation:"),
-                        HumanMessage(content=f"JSON Schema: {dumps}"),
-                        HumanMessage(content=f"Real-World Traffic Data (NGSIM_config): {NGSIM_config}"),
-                        HumanMessage(content=f"Simulation Environment Config: {small_config}"),
-                        HumanMessage(content=f"Recent Failures: {Counter(recent_crash_types)}"),
-                        HumanMessage(content="Based on this analysis, provide modifications only for the following properties in the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Avoid adding new parameters or unrelated content.")
-                    ]               
+                    messages.append(HumanMessage(content=f"Previous Episode Config: {self.config_history[-2]}"))
+                    messages.append(HumanMessage(content=f"Previous Episode Lengths: {self.reward_history[-2]}"))
+                messages.append(HumanMessage(content="Based on this analysis, provide modifications only for the following properties in the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Avoid adding new parameters or unrelated content."))
+
                 prompt = ChatPromptTemplate.from_messages(messages)
                 chain = prompt | llm | StrOutputParser()
 
@@ -143,7 +134,6 @@ class FailureAnalysisCallback(BaseCallback):
                     self.update_environment_config(new_config)
                 except:
                     import pdb; pdb.set_trace()
-
             else:
                 edge_case_values_dict = {
                     "edge_case_count_for_lat_and_lon": float(self.edge_case_lon_and_lat_count),
@@ -166,22 +156,8 @@ class FailureAnalysisCallback(BaseCallback):
             return 'crashed'
         if 'went_offroad' in info and info['went_offroad']:
             return 'went_offroad'
+
         return None
-
-    def generate_new_config_file(self, small_config, response) -> dict:
-        dumps = json.dumps(env_json_schema, indent=2)
-        messages = [
-            HumanMessage(content="Given the current environment configuration and the following suggestions, please generate an updated configuration file."),
-            HumanMessage(content=f"Current Configuration Schema: {dumps}"),
-            HumanMessage(content=f"Current Configuration: {small_config}"),
-            HumanMessage(content=f"Suggested Modifications: {response}"),
-            HumanMessage(content="Please update the configuration based on these suggestions, adhering to the current schema. Generate only the updated configuration in dictionary format, without additional text or comments.")
-        ]
-        prompt = ChatPromptTemplate.from_messages(messages)
-        chain = prompt | llm | StrOutputParser()
-        response_for_updated_config = chain.invoke({"dumps": dumps})
-
-        return response_for_updated_config
 
     def get_small_config(self):
         inner_env = self.env.envs[0]
