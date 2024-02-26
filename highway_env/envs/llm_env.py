@@ -10,7 +10,9 @@ from highway_env.road.road import Road, RoadNetwork
 from highway_env.utils import near_split
 from highway_env.vehicle.controller import ControlledVehicle
 from highway_env.vehicle.kinematics import Vehicle
-from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle, MotorVehicle, RegularIDMVehicle
+from highway_env.vehicle.behavior import AggressiveIDMVehicle, DefensiveIDMVehicle, TruckVehicle, MotorVehicle, RegularIDMVehicle, IDMVehicle
+from highway_env.envs.common.observation import TimeToCollisionObservation
+np.seterr(divide='ignore', invalid='ignore')
 
 Observation = np.ndarray
 
@@ -240,21 +242,16 @@ class LLMEnv(AbstractEnv):
         self.config.update(new_config)
         print("FINAL UPDATED CONFIG PLEASE DOUBLE CHECK", self.config)
 
-
-    def calculate_risk_indices(self, ego_vehicle: Vehicle, other_vehicle: Vehicle) -> Tuple[float, float, float]:
+    def calculate_long_and_lat_risk_indices(self, ego_vehicle: Vehicle, other_vehicle: Vehicle) -> Tuple[float, float, float]:
         # Constants from IDMVehicle settings
         rho = IDMVehicle.TIME_WANTED  # Response time of the rear vehicle
-        a_max_accel = IDMVehicle.COMFORT_ACC_MAX  # Desired maximum acceleration
         a_max_brake = IDMVehicle.COMFORT_ACC_MIN  # Desired maximum deceleration
-        distance_wanted = 2.0  # Desired jam distance to the front vehicle
+        distance_wanted = 1.5  # Desired jam distance to the front vehicle
 
         # Relative parameters for longitudinal dynamics
         v_r = ego_vehicle.speed  # Velocity of the rear vehicle (ego vehicle)
         v_f = other_vehicle.speed  # Velocity of the front vehicle
         d_lon = other_vehicle.position[0] - ego_vehicle.position[0] - other_vehicle.LENGTH  # Longitudinal distance
-
-        # Use the existing TTC computation from your environment
-        TTC = self.env.compute_TTC(ego_vehicle, other_vehicle)
 
         # Safe longitudinal distance calculation
         d_lon_min = max(v_r * rho + distance_wanted + (v_r**2) / (2 * abs(a_max_brake)) - (v_f**2) / (2 * abs(a_max_brake)), 0)
@@ -266,7 +263,7 @@ class LLMEnv(AbstractEnv):
             r_lon = 1 - d_lon / d_lon_min
 
         # Relative parameters for lateral dynamics
-        lateral_distance_wanted = IDMVehicle.LATERAL_DISTANCE_WANTED  # Placeholder
+        lateral_distance_wanted = 1  # Placeholder
         lateral_velocity = abs(ego_vehicle.velocity[1])  # Lateral speed of the ego vehicle, placeholder calculation
         lateral_distance = abs(ego_vehicle.position[1] - other_vehicle.position[1])  # Lateral distance
 
@@ -279,14 +276,33 @@ class LLMEnv(AbstractEnv):
         else:
             r_lat = 1 - lateral_distance / lateral_distance_safe
 
-        return r_lon, r_lat, TTC
+        return r_lon, r_lat
+    
+    def calculate_TTC_near_miss(self):
+        self.ttc_observation = TimeToCollisionObservation(self)
+        TTC_grid = self.ttc_observation.observe_new()
+        TTC_grid = np.abs(TTC_grid)
+        if np.any((TTC_grid < 15) & (TTC_grid > 0)):
+            near_miss_occurred = True
+        else:
+            near_miss_occurred = False
+        
+        nearest_vehicles = self.ttc_observation.nearest_vehicles()
 
-    def detect_edge_case(ego_vehicle, other_vehicle):
-        r_lon, r_lat, TTC = calculate_risk_indices(ego_vehicle, other_vehicle)
-        threshold_lon = 0.8  # High risk of front or rear collision
-        threshold_lat = 0.8  # High risk of side collision or lane departure
-        threshold_TTC = 2.0  # Seconds before a collision
-        # Define your edge case criteria
-        is_edge_case = r_lon > threshold_lon or r_lat > threshold_lat or TTC < threshold_TTC
+        return near_miss_occurred, nearest_vehicles
 
-        return is_edge_case
+    def detect_edge_case(self, other_vehicle, near_miss_occurred):
+
+        r_lon, r_lat = self.calculate_long_and_lat_risk_indices(self.vehicle, other_vehicle)
+
+        threshold_lon = 2.5  # High risk of front or rear collision
+        threshold_lat = 0.99  # High risk of side collision or lane departure
+
+        # Define your edge case criteria        
+        is_edge_case_lon_and_lat = r_lon > threshold_lon or r_lat > threshold_lat
+        is_edge_case_TTC_near_miss = near_miss_occurred
+
+        # print("Lat and long edge cases: ", is_edge_case_lon_and_lat)
+        # print("TTC-near-miss edge case: ", is_edge_case_TTC_near_miss)
+
+        return is_edge_case_lon_and_lat, is_edge_case_TTC_near_miss

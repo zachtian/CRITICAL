@@ -38,6 +38,9 @@ class FailureAnalysisCallback(BaseCallback):
         self.episode_length = 0
         self.config_history = []
         self.reward_history = []
+        self.edge_case_lon_and_lat_count = 0
+        self.edge_case_TTC_near_miss_count = 0
+        self.loop_count = 0
 
     def _on_step(self) -> bool:
         self.step_counter += 1
@@ -53,7 +56,13 @@ class FailureAnalysisCallback(BaseCallback):
             crash_type = infos[0].get('crash_type') 
 
         if self.last_obs is None:
-            self.last_obs = new_obs  
+            self.last_obs = new_obs
+
+        near_miss_occurred, nearest_vehicle = self.env.envs[0].unwrapped.calculate_TTC_near_miss()
+        is_edge_case_lon_and_lat, is_edge_case_TTC_near_miss = self.env.envs[0].unwrapped.detect_edge_case(nearest_vehicle[0], near_miss_occurred)
+
+        self.edge_case_lon_and_lat_count += is_edge_case_lon_and_lat
+        self.edge_case_TTC_near_miss_count += is_edge_case_TTC_near_miss
 
         if dones[0]:  
             failure_info = infos[0]
@@ -76,6 +85,7 @@ class FailureAnalysisCallback(BaseCallback):
 
         self.last_obs = new_obs
         if self.step_counter % 500 == 0:
+            self.loop_count += 1
             if self.use_llm:
                 self.write_failure_stats_to_csv()
                 dumps = json.dumps(env_json_schema, indent=2)
@@ -106,16 +116,33 @@ class FailureAnalysisCallback(BaseCallback):
                 prompt = ChatPromptTemplate.from_messages(messages)
                 chain = prompt | llm | StrOutputParser()
 
-                for attempt in range(5):
-                    try:
-                        response = chain.invoke({"dumps": dumps})
-                        print('LLM Suggestion:', response)
+                response = chain.invoke({"dumps": dumps})
+                print('LLM Suggestion:', response)
+                self.failures.clear()
 
-                        self.update_environment_config(response)
-                        break
-                    except Exception as e:
-                        import pdb; pdb.set_trace()
+                edge_case_values_dict = {
+                    "edge_case_count_for_lat_and_lon": float(self.edge_case_lon_and_lat_count),
+                    "edge_case_count_for_TTC_near_miss": float(self.edge_case_TTC_near_miss_count)              
+                }
+                self.write_config_to_json(edge_case_values_dict, self.config_file, optional_index=(self.loop_count-1))
+
+                self.edge_case_lon_and_lat_count = 0
+                self.edge_case_TTC_near_miss_count = 0
+                
+                new_config = self.generate_new_config_file(small_config, response)
+                try:
+                    self.update_environment_config(new_config)
+                except:
+                    import pdb; pdb.set_trace()
             else:
+                edge_case_values_dict = {
+                    "edge_case_count_for_lat_and_lon": float(self.edge_case_lon_and_lat_count),
+                    "edge_case_count_for_TTC_near_miss": float(self.edge_case_TTC_near_miss_count)              
+                }
+                self.write_config_to_json(edge_case_values_dict, self.config_file)
+                self.edge_case_lon_and_lat_count = 0
+                self.edge_case_TTC_near_miss_count = 0
+
                 NGSIM_config = generate_highwayenv_config(self.NGSIM_df)
                 self.update_environment_config(NGSIM_config)
 
@@ -168,7 +195,7 @@ class FailureAnalysisCallback(BaseCallback):
                 for crash_type, c_count in crash_type_counts[failure_type].items():
                     writer.writerow([self.step_counter, failure_type, f_count, crash_type, c_count])
 
-    def write_config_to_json(self, config, file_name):
+    def write_config_to_json(self, config, file_name, optional_index=None):
         # Load existing data or start with an empty list if file doesn't exist
         try:
             with open(file_name, 'r') as json_file:
@@ -178,12 +205,20 @@ class FailureAnalysisCallback(BaseCallback):
         except (FileNotFoundError, json.JSONDecodeError):
             existing_data = []
 
-        # Append new configuration
-        existing_data.append(config)
+        if optional_index == None:
+            # Append new configuration
+            existing_data.append(config)
 
-        # Write updated data back to JSON file
-        with open(file_name, 'w') as json_file:
-            json.dump(existing_data, json_file, indent=4)
+            # Write updated data back to JSON file
+            with open(file_name, 'w') as json_file:
+                json.dump(existing_data, json_file, indent=4)
+        else: 
+            # Add new configuration
+            existing_data[optional_index].update(config)
+
+            # Write updated data back to JSON file
+            with open(file_name, 'w') as json_file:
+                json.dump(existing_data, json_file, indent=4)
 
 def generate_highwayenv_config(csv_file):
     df = pd.read_csv(csv_file)
@@ -209,7 +244,7 @@ def generate_highwayenv_config(csv_file):
     return config_json
 
 llm = ChatOllama(
-    model="llama2:70b-chat",
+    model="llama2:13b-chat",
 )
 
 env_json_schema = {

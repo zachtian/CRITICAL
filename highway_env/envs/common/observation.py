@@ -7,7 +7,7 @@ import pandas as pd
 from gymnasium import spaces
 
 from highway_env import utils
-from highway_env.envs.common.finite_mdp import compute_ttc_grid
+from highway_env.envs.common.finite_mdp import compute_ttc_grid, compute_ttc_grid_new
 from highway_env.envs.common.graphics import EnvViewer
 from highway_env.road.lane import AbstractLane
 from highway_env.utils import Vector
@@ -110,7 +110,7 @@ class GrayscaleObservation(ObservationType):
 
 
 class TimeToCollisionObservation(ObservationType):
-    def __init__(self, env: "AbstractEnv", horizon: int = 10, **kwargs: dict) -> None:
+    def __init__(self, env: "AbstractEnv", horizon: int = 5, **kwargs: dict) -> None:
         super().__init__(env)
         self.horizon = horizon
 
@@ -147,7 +147,36 @@ class TimeToCollisionObservation(ObservationType):
         vf = grid.shape[0] + self.observer_vehicle.speed_index + obs_speeds // 2
         clamped_grid = padded_grid[v0 : vf + 1, :, :]
         return clamped_grid.astype(np.float32)
+    
+    def observe_new(self) -> np.ndarray:
+        if not self.env.road:
+            return np.zeros((3, 1))
 
+        ttc_matrix = compute_ttc_grid_new(self.env, vehicle=self.observer_vehicle)
+
+        # Assuming we want to keep observation of 3 lanes around the observer vehicle
+        obs_lanes = 3
+        center_lane = self.observer_vehicle.lane_index[2]
+        l0 = max(0, center_lane - obs_lanes // 2)
+        lf = min(ttc_matrix.shape[0], center_lane + obs_lanes // 2 + 1)
+
+        # Extract relevant lanes
+        clamped_matrix = ttc_matrix[l0:lf, :]
+
+        return clamped_matrix.astype(np.float32)
+
+    def nearest_vehicles(self) -> list:
+        nearest_vehicles = self.env.road.close_objects_to(
+            vehicle=self.observer_vehicle,
+            distance=500,
+            count=1,
+            see_behind=True,
+            sort=True,
+            vehicles_only=True
+        )
+
+        return nearest_vehicles
+    
 
 class KinematicObservation(ObservationType):
 
