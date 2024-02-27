@@ -13,6 +13,16 @@ from HIGHD_utils import *
 from kmodes.kprototypes import KPrototypes
 from sklearn.preprocessing import StandardScaler
 
+def calculate_density(num_vehicles, road_length_km):
+    """
+    Calculate the density of vehicles per kilometer.
+    
+    :param num_vehicles: Total number of vehicles
+    :param road_length_km: Length of the road segment in kilometers
+    :return: Density of vehicles per kilometer
+    """
+    return num_vehicles / road_length_km if road_length_km > 0 else 0
+
 def extract_features(tracks):
     # Initialize lists to hold feature values
     speeds = []
@@ -121,13 +131,18 @@ def classify_and_count_vehicles(track_number, base_dir, cluster_labels, start_in
 
     num_trucks = meta['numTrucks']
     num_cars = meta['numCars']
+    total_vehicles = num_aggressive + num_defensive + num_regular
+
+    # Calculate density
+    density = calculate_density(total_vehicles, 420)
 
     return {
         'num_aggressive': num_aggressive,
         'num_defensive': num_defensive,
         'num_regular': num_regular,
         'num_trucks': num_trucks,
-        'num_cars': num_cars
+        'num_cars': num_cars,
+        'density': density 
     }, end_index
 if __name__ == '__main__':
 

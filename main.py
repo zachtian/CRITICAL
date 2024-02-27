@@ -296,6 +296,7 @@ def generate_highwayenv_config(csv_file):
     truck_vehicle_ratio = float(selected_row['num_trucks'] / total_vehicles)
 
     config = {
+        "vehicles_density": selected_row['density'],
         "aggressive_vehicle_ratio": aggressive_vehicle_ratio,
         "defensive_vehicle_ratio": defensive_vehicle_ratio,
         "truck_vehicle_ratio": truck_vehicle_ratio,
@@ -314,7 +315,7 @@ if __name__ == "__main__":
         os.makedirs("videos")
 
     REAL_TIME_RENDERING = False
-    USE_LLM = True
+    USE_LLM = False
     POLICY_NET = 'mlp'
     RL_MODEL = 'PPO'
     if not os.path.exists('experiments'):
