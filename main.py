@@ -19,6 +19,15 @@ from trasnformer_utils import CustomExtractor, attention_network_kwargs
 
 recent_crash_types = ['front', 'front-edge', 'side-on', "rear", "rear-edge"]
 
+def is_within_range(config, schema):
+    for key in schema['properties']:
+        if key in config:
+            if 'minimum' in schema['properties'][key] and config[key] < schema['properties'][key]['minimum']:
+                return False
+            if 'maximum' in schema['properties'][key] and config[key] > schema['properties'][key]['maximum']:
+                return False
+    return True
+
 class FailureAnalysisCallback(BaseCallback):
     def __init__(self, env, experiment_path, USE_LLM = False, verbose=0):
         super(FailureAnalysisCallback, self).__init__(verbose)
@@ -41,6 +50,40 @@ class FailureAnalysisCallback(BaseCallback):
         self.edge_case_lon_and_lat_count = 0
         self.edge_case_TTC_near_miss_count = 0
         self.loop_count = 0
+        self.env_json_schema = {
+            "title": "Environment Configuration",
+            "description": "Configuration settings of the simulation environment.",
+            "type": "object",
+            "properties": {
+                "vehicles_density": {
+                    "type": "number",
+                    "minimum": 0.2,  
+                    "maximum": 5  
+                },
+                "aggressive_vehicle_ratio": {
+                    "type": "number",
+                    "minimum": 0.0, 
+                    "maximum": 1.0  
+                },
+                "defensive_vehicle_ratio": {
+                    "type": "number",
+                    "minimum": 0.0,  
+                    "maximum": 1.0   
+                },
+                "truck_vehicle_ratio": {
+                    "type": "number",
+                    "minimum": 0.0,  
+                    "maximum": 1.0  
+                }
+            },
+            "required": [
+                "vehicles_density",
+                "aggressive_vehicle_ratio", 
+                "defensive_vehicle_ratio", 
+                "truck_vehicle_ratio"
+            ]
+        }
+
 
     def _on_step(self) -> bool:
         self.step_counter += 1
@@ -59,7 +102,11 @@ class FailureAnalysisCallback(BaseCallback):
             self.last_obs = new_obs
 
         near_miss_occurred, nearest_vehicle = self.env.envs[0].unwrapped.calculate_TTC_near_miss()
-        is_edge_case_lon_and_lat, is_edge_case_TTC_near_miss = self.env.envs[0].unwrapped.detect_edge_case(nearest_vehicle[0], near_miss_occurred)
+        if nearest_vehicle:
+            is_edge_case_lon_and_lat, is_edge_case_TTC_near_miss = self.env.envs[0].unwrapped.detect_edge_case(nearest_vehicle[0], near_miss_occurred)
+        else:
+            is_edge_case_lon_and_lat = 0
+            is_edge_case_TTC_near_miss = 0
 
         self.edge_case_lon_and_lat_count += is_edge_case_lon_and_lat
         self.edge_case_TTC_near_miss_count += is_edge_case_TTC_near_miss
@@ -88,7 +135,7 @@ class FailureAnalysisCallback(BaseCallback):
             self.loop_count += 1
             if self.use_llm:
                 self.write_failure_stats_to_csv()
-                dumps = json.dumps(env_json_schema, indent=2)
+                dumps = json.dumps(self.env_json_schema, indent=2)
                 recent_crash_types = [failure['crash_type'] for failure in self.failures]
                 
                 small_config = self.get_small_config()
@@ -103,19 +150,23 @@ class FailureAnalysisCallback(BaseCallback):
                 self.episode_lengths = []
 
                 messages = [
-                    HumanMessage(content="Please analyze the following data and suggest modifications for scenario generation, then provide the updated configuration as a Python dictionary:"),
+                    HumanMessage(content="Based on the following data and constraints, suggest modifications for scenario generation. Provide the updated configuration as a JSON dictionary within the specified ranges."),
                     HumanMessage(content=f"JSON Schema: {dumps}"),
-                    HumanMessage(content=f"Real-World Traffic Data (HIGHD_config): {HIGHD_config}"),
-                    HumanMessage(content=f"Simulation Environment Config: {small_config}"),
+                    HumanMessage(content=f"Real-World Traffic Data: {HIGHD_config}"),
+                    HumanMessage(content=f"Current Config: {small_config}"),
                     HumanMessage(content=f"Recent Failures: {Counter(recent_crash_types)}"),
                     HumanMessage(content=f"Longitude and Latitude-based Edge Cases: {float(self.edge_case_lon_and_lat_count)}"),
                     HumanMessage(content=f"Time to Collision (TTC) Near Miss Cases: {float(self.edge_case_TTC_near_miss_count)}"),
                 ]
-                if len(self.config_history) > 1:
-                    messages.append(HumanMessage(content=f"Previous Episode Config: {self.config_history[-2]}"))
-                    messages.append(HumanMessage(content=f"Previous Episode Lengths: {self.reward_history[-2]}"))
+
+                for i in range(1, min(len(self.config_history) - 1, 5)  + 1):
+                    step_number = len(self.config_history) - i 
+                    config_index = -i - 1  
+                    messages.append(HumanMessage(content=f"Previous Episode Config {step_number}: {self.config_history[config_index]}"))
+                    messages.append(HumanMessage(content=f"Previous Episode Lengths {step_number}: {self.reward_history[config_index]}"))
+
                 messages.append(
-                    HumanMessage(content="Based on this analysis and the need for more diverse edge cases, particularly in longitudinal and lateral dynamics and TTC-based near-miss scenarios, please suggest modifications to the following properties of the environment configuration: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Provide your response as a JSON dictionary containing only these four elements.")
+                    HumanMessage(content="Considering the insights from the Real-World Traffic Data and the observed simulation trends, suggest modifications to enhance scenario realism. Focus on adjusting the following properties of the environment configuration to reflect real-world driving behaviors and patterns: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Your response should be a JSON dictionary containing only these four elements.")
                 )
                 prompt = ChatPromptTemplate.from_messages(messages)
                 chain = prompt | llm | StrOutputParser()
@@ -124,14 +175,23 @@ class FailureAnalysisCallback(BaseCallback):
                 self.edge_case_lon_and_lat_count = 0
                 self.edge_case_TTC_near_miss_count = 0
                             
-                # Attempt to update the environment configuration directly
                 for attempt in range(5):
                     try:
                         response = chain.invoke({"dumps": dumps})
-                        print('LLM Suggestion:', response)
-                        self.update_environment_config(response)
-                        break
+                        parsed_config = json.loads(response[response.find('{'):response.rfind('}') + 1])
+                        if is_within_range(parsed_config, json.loads(dumps)):
+                            print('LLM Suggestion:', response)
+                            self.update_environment_config(response)
+                            break
+                        else:
+                            messages.append(
+                                HumanMessage(content="PLEASE DOUBLE CHECK IF THE SUGGESTED VALUES ARE WHITIN RANGE.")
+                            )
+                            prompt = ChatPromptTemplate.from_messages(messages)
+                            chain = prompt | llm | StrOutputParser()
+
                     except Exception as e:
+                        print(response)
                         print("Error updating environment config:", e)
                         if attempt == 4:
                             import pdb; pdb.set_trace()
@@ -248,23 +308,6 @@ llm = ChatOllama(
     model="llama2:70b",
 )
 
-env_json_schema = {
-    "title": "Environment Configuration",
-    "description": "Configuration settings of the simulation environment.",
-    "type": "object",
-    "properties": {
-        "vehicles_density": {"type": "number"},
-        "aggressive_vehicle_ratio": {"type": "number"},
-        "defensive_vehicle_ratio": {"type": "number"},
-        "truck_vehicle_ratio": {"type": "number"}
-    },
-    "required": [
-        "vehicles_density",
-        "aggressive_vehicle_ratio", 
-        "defensive_vehicle_ratio", 
-        "truck_vehicle_ratio"
-    ]
-}
 
 if __name__ == "__main__":
     if not os.path.exists("videos"):
