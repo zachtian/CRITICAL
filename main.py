@@ -37,7 +37,7 @@ class FailureAnalysisCallback(BaseCallback):
         self.step_counter = 0  
         self.failure_file = os.path.join(experiment_path, 'failures.csv')
         self.config_file = os.path.join(experiment_path, 'config.csv')
-        self.HIGHD_df = 'highwayenv_scenario_data.csv'
+        self.HIGHD_df = 'HIGHD_data_train.csv'
         HIGHD_config = generate_highwayenv_config(self.HIGHD_df)
         self.update_environment_config(HIGHD_config)
         self.use_llm = USE_LLM
