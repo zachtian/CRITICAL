@@ -58,7 +58,7 @@ class FailureAnalysisCallback(BaseCallback):
                 "vehicles_density": {
                     "type": "number",
                     "minimum": 0.2,  
-                    "maximum": 5  
+                    "maximum": 10  
                 },
                 "aggressive_vehicle_ratio": {
                     "type": "number",
@@ -172,9 +172,7 @@ class FailureAnalysisCallback(BaseCallback):
                 chain = prompt | llm | StrOutputParser()
 
                 self.failures.clear()
-                self.edge_case_lon_and_lat_count = 0
-                self.edge_case_TTC_near_miss_count = 0
-                            
+
                 for attempt in range(5):
                     try:
                         response = chain.invoke({"dumps": dumps})
@@ -195,17 +193,18 @@ class FailureAnalysisCallback(BaseCallback):
                         print("Error updating environment config:", e)
                         if attempt == 4:
                             import pdb; pdb.set_trace()
-            else:
-                edge_case_values_dict = {
-                    "edge_case_count_for_lat_and_lon": float(self.edge_case_lon_and_lat_count),
-                    "edge_case_count_for_TTC_near_miss": float(self.edge_case_TTC_near_miss_count)              
-                }
-                self.write_config_to_json(edge_case_values_dict, self.config_file)
-                self.edge_case_lon_and_lat_count = 0
-                self.edge_case_TTC_near_miss_count = 0
 
+            else:
                 HIGHD_config = generate_highwayenv_config(self.HIGHD_df)
                 self.update_environment_config(HIGHD_config)
+
+            edge_case_values_dict = {
+                "edge_case_count_for_lat_and_lon": float(self.edge_case_lon_and_lat_count),
+                "edge_case_count_for_TTC_near_miss": float(self.edge_case_TTC_near_miss_count)              
+            }
+            self.write_config_to_json(edge_case_values_dict, self.config_file, optional_index= (self.loop_count - 1))
+            self.edge_case_lon_and_lat_count = 0
+            self.edge_case_TTC_near_miss_count = 0
 
         if REAL_TIME_RENDERING:
             self.model.env.render()
@@ -317,7 +316,7 @@ if __name__ == "__main__":
     REAL_TIME_RENDERING = False
     USE_LLM = False
     POLICY_NET = 'mlp'
-    RL_MODEL = 'PPO'
+    RL_MODEL = 'DQN'
     if not os.path.exists('experiments'):
         os.makedirs('experiments', exist_ok=True)
 
@@ -363,7 +362,7 @@ if __name__ == "__main__":
             target_update_interval=50,
             exploration_fraction=0.5,
             verbose=1,
-            #tensorboard_log='logs',
+            tensorboard_log='logs',
         )
     else:
         model = PPO(
