@@ -60,15 +60,13 @@ class EdgeCaseAnalyzerFromJSON:
         return lat_lon_results, ttc_near_miss_results
     
     def get_configurations_for_last_bins(self):
-        """Returns the configurations associated with the last four bins."""
+        """Returns the configurations associated with the last four bins, formatting numbers to two decimal places."""
         if not hasattr(self, 'lat_lon_bin_edges') or not hasattr(self, 'ttc_near_miss_bin_edges'):
             raise ValueError("plot_distribution must be called before getting configurations.")
 
-        # Identify the edge range for the last four bins
-        lat_lon_min_edge = self.lat_lon_bin_edges[-5]  # The starting edge of the last four bins
+        lat_lon_min_edge = self.lat_lon_bin_edges[-5]
         ttc_near_miss_min_edge = self.ttc_near_miss_bin_edges[-5]
 
-        # Filter configurations, checking for key existence and value within the last four bins
         lat_lon_configs = [config for config in self.configurations 
                         if 'edge_case_count_for_lat_and_lon' in config and
                             lat_lon_min_edge <= config['edge_case_count_for_lat_and_lon'] < self.lat_lon_bin_edges[-1]]
@@ -76,9 +74,9 @@ class EdgeCaseAnalyzerFromJSON:
                                 if 'edge_case_count_for_TTC_near_miss' in config and
                                     ttc_near_miss_min_edge <= config['edge_case_count_for_TTC_near_miss'] < self.ttc_near_miss_bin_edges[-1]]
 
-        # Format configurations into strings
-        lat_lon_configs_str = ["; ".join(f"{k}: {v}" for k, v in config.items()) for config in lat_lon_configs]
-        ttc_near_miss_configs_str = ["; ".join(f"{k}: {v}" for k, v in config.items()) for config in ttc_near_miss_configs]
+        # Formatting with two decimal places for numeric values
+        lat_lon_configs_str = ["; ".join(f"{k}: {round(v, 2) if isinstance(v, float) else v}" for k, v in config.items()) for config in lat_lon_configs]
+        ttc_near_miss_configs_str = ["; ".join(f"{k}: {round(v, 2) if isinstance(v, float) else v}" for k, v in config.items()) for config in ttc_near_miss_configs]
 
         return lat_lon_configs_str, ttc_near_miss_configs_str
 
@@ -93,18 +91,3 @@ print("Last 4 bins and frequencies for Lat & Lon Edge Cases:", lat_lon_results)
 print("Last 4 bins and frequencies for TTC Near Miss Edge Cases:", ttc_near_miss_results)
 print("\nConfigurations for last bins of Lat & Lon Edge Cases:\n", "\n".join(lat_lon_configs_str))
 print("\nConfigurations for last bins of TTC Near Miss Edge Cases:\n", "\n".join(ttc_near_miss_configs_str))
-
-
-# Example usage:
-# file_path = 'experiments/exp_DQN_False_1/config.csv'
-# analyzer = EdgeCaseAnalyzerFromJSON(file_path)
-# analyzer.plot_distribution()  # Must be called before get_last_four_bin_values_and_frequencies
-# lat_lon_results, ttc_near_miss_results = analyzer.get_last_four_bin_values_and_frequencies()
-
-# print("Last 4 bins and frequencies for Lat & Lon Edge Cases:", lat_lon_results)
-# print("-----------------------------------------------------------")
-# print("Last 4 bins and frequencies for TTC Near Miss Edge Cases:", ttc_near_miss_results)
-
-# print("Bins and frequencies for Lat & Lon Edge Cases:", lat_lon_results)
-# print("-----------------------------------------------------------")
-# print("Bins and frequencies for TTC Near Miss Edge Cases:", ttc_near_miss_results)
