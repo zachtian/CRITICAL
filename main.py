@@ -3,6 +3,8 @@ from stable_baselines3 import DQN, PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.save_util import save_to_pkl
+import wandb
+from wandb.integration.sb3 import WandbCallback
 
 import os
 import csv
@@ -316,7 +318,7 @@ if __name__ == "__main__":
     REAL_TIME_RENDERING = False
     USE_LLM = False
     POLICY_NET = 'mlp'
-    RL_MODEL = 'DQN'
+    RL_MODEL = 'PPO'
     if not os.path.exists('experiments'):
         os.makedirs('experiments', exist_ok=True)
 
@@ -377,9 +379,14 @@ if __name__ == "__main__":
             verbose=2,
             tensorboard_log='logs',
         )
-
+    wandb.init(project="LLMAV", name=f"exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}",sync_tensorboard=True)
+    wandb_callback = WandbCallback(
+        gradient_save_freq=1000,  # adjust according to your needs
+        model_save_path=f"{wandb.run.dir}/model",  # save model in wandb directory
+        verbose=2,
+    )
     callback = FailureAnalysisCallback(env, experiment_path, USE_LLM)
-    model.learn(int(2e5), callback=callback)
+    model.learn(int(2e5), callback=[wandb_callback,callback])
     model.save(os.path.join(experiment_path, 'trained_model'))
 
     env.close()

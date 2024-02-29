@@ -41,8 +41,8 @@ class LLMEnv(AbstractEnv):
                 },
                 "screen_width": 1920,  # [px]
                 "screen_height": 270,  # [px]
-                "lanes_count": 5,
-                "vehicles_count": 30,
+                "lanes_count": 3,
+                "vehicles_count": 50,
                 "controlled_vehicles": 1,
                 "initial_lane_id": None,
                 "duration": 60,  # [s]
@@ -231,13 +231,6 @@ class LLMEnv(AbstractEnv):
         return self.time >= self.config["duration"]
 
     def update_env_config(self, new_config):
-        """
-        Update the global environment configuration.
-
-        :param new_config: A dictionary containing new configuration parameters.
-        """
-
-        #new_config = ast.literal_eval(new_config)
 
         self.config.update(new_config)
         print("FINAL UPDATED CONFIG PLEASE DOUBLE CHECK", self.config)
