@@ -17,6 +17,15 @@ class IDMVehicle(ControlledVehicle):
     - Lateral: the MOBIL model decides when to change lane by maximizing the acceleration of nearby vehicles.
     """
 
+    # time it takes rear car to react and begin braking (both longitudinal and lateral)
+    # https://trl.co.uk/sites/default/files/PPR313_new.pdf
+    # seconds
+    RESPONSE_TIME = 0.1
+
+    # max acceleration of both cars towards each other during response time (lateral)
+    # m/s^2
+    ACC_MAX_RESPONSE = 1    
+
     # Longitudinal policy parameters
     ACC_MAX = 6.0  # [m/s2]
     """Maximum acceleration."""
