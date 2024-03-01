@@ -37,8 +37,8 @@ class EdgeCaseAnalyzerFromJSON:
         axs[1].set_xlabel('Edge Case Counts')
         axs[1].set_ylabel('Frequency')
 
-        plt.tight_layout()
-        plt.show()
+        # plt.tight_layout()
+        # plt.show()
 
         # Store the bins for later retrieval
         self.lat_lon_bin_edges = bins_lat_lon
@@ -79,15 +79,3 @@ class EdgeCaseAnalyzerFromJSON:
         ttc_near_miss_configs_str = ["; ".join(f"{k}: {round(v, 2) if isinstance(v, float) else v}" for k, v in config.items()) for config in ttc_near_miss_configs]
 
         return lat_lon_configs_str, ttc_near_miss_configs_str
-
-# Example usage:
-file_path = 'experiments/exp_DQN_False_1/config.csv'
-analyzer = EdgeCaseAnalyzerFromJSON(file_path)
-analyzer.plot_distribution()  # Must be called before the other methods
-lat_lon_results, ttc_near_miss_results = analyzer.get_last_four_bin_values_and_frequencies()
-lat_lon_configs_str, ttc_near_miss_configs_str = analyzer.get_configurations_for_last_bins()
-
-print("Last 4 bins and frequencies for Lat & Lon Edge Cases:", lat_lon_results)
-print("Last 4 bins and frequencies for TTC Near Miss Edge Cases:", ttc_near_miss_results)
-print("\nConfigurations for last bins of Lat & Lon Edge Cases:\n", "\n".join(lat_lon_configs_str))
-print("\nConfigurations for last bins of TTC Near Miss Edge Cases:\n", "\n".join(ttc_near_miss_configs_str))

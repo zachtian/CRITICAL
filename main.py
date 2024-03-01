@@ -18,6 +18,7 @@ from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from trasnformer_utils import CustomExtractor, attention_network_kwargs
+from edge_case_distribution import EdgeCaseAnalyzerFromJSON
 
 recent_crash_types = ['front', 'front-edge', 'side-on', "rear", "rear-edge"]
 
@@ -52,6 +53,8 @@ class FailureAnalysisCallback(BaseCallback):
         self.edge_case_lon_and_lat_count = 0
         self.edge_case_TTC_near_miss_count = 0
         self.loop_count = 0
+        self.corner_case_configurations_lat_lon = ""
+        self.corner_case_configurations_ttc_near_miss = ""
         self.env_json_schema = {
             "title": "Environment Configuration",
             "description": "Configuration settings of the simulation environment.",
@@ -133,7 +136,8 @@ class FailureAnalysisCallback(BaseCallback):
                 })
 
         self.last_obs = new_obs
-        if self.step_counter % 500 == 0:
+        print("Step Number", self.step_counter)
+        if self.step_counter % 100 == 0:
             self.loop_count += 1
             if self.use_llm:
                 self.write_failure_stats_to_csv()
@@ -207,6 +211,24 @@ class FailureAnalysisCallback(BaseCallback):
             self.write_config_to_json(edge_case_values_dict, self.config_file, optional_index= (self.loop_count - 1))
             self.edge_case_lon_and_lat_count = 0
             self.edge_case_TTC_near_miss_count = 0
+
+        if (self.step_counter != 0) and (self.step_counter % 500 == 0):
+            configuration_file_name = f"corner_case_configurations/exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}/for_step_{self.step_counter}"
+
+            directory = os.path.dirname(configuration_file_name)
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+            
+            file_path = f'experiments/exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}/config.csv'
+            analyzer = EdgeCaseAnalyzerFromJSON(file_path)
+            analyzer.plot_distribution()  # Must be called before the other methods
+            lat_lon_configs_str, ttc_near_miss_configs_str = analyzer.get_configurations_for_last_bins()
+
+            self.corner_case_configurations_lat_lon = "Configurations for last bins of Lat & Lon Edge Cases:\n" + "\n".join(lat_lon_configs_str)
+            self.corner_case_configurations_ttc_near_miss = "Configurations for last bins of TTC Near Miss Cases:\n" + "\n".join(ttc_near_miss_configs_str)
+
+            self.write_config_to_json(self.corner_case_configurations_lat_lon, configuration_file_name)
+            self.write_config_to_json(self.corner_case_configurations_ttc_near_miss, configuration_file_name)
 
         if REAL_TIME_RENDERING:
             self.model.env.render()
@@ -307,7 +329,7 @@ def generate_highwayenv_config(csv_file):
     return config_json
 
 llm = ChatOllama(
-    model="llama2:70b",
+    model="llama2:13b",
 )
 
 
@@ -379,14 +401,14 @@ if __name__ == "__main__":
             verbose=2,
             tensorboard_log='logs',
         )
-    wandb.init(project="LLMAV", name=f"exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}",sync_tensorboard=True)
-    wandb_callback = WandbCallback(
-        gradient_save_freq=1000,  # adjust according to your needs
-        model_save_path=f"{wandb.run.dir}/model",  # save model in wandb directory
-        verbose=2,
-    )
+    # wandb.init(project="LLMAV", name=f"exp_kethan_{RL_MODEL}_{USE_LLM}_{next_exp_number}",sync_tensorboard=True)
+    # wandb_callback = WandbCallback(
+    #     gradient_save_freq=1000,  # adjust according to your needs
+    #     model_save_path=f"{wandb.run.dir}/model",  # save model in wandb directory
+    #     verbose=2,
+    # )
     callback = FailureAnalysisCallback(env, experiment_path, USE_LLM)
-    model.learn(int(2e5), callback=[wandb_callback,callback])
+    model.learn(int(2e5), callback=[callback])
     model.save(os.path.join(experiment_path, 'trained_model'))
 
     env.close()
