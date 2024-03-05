@@ -33,6 +33,59 @@ def visualize_clusters_3d(features, labels):
 
     plt.show()
 
+def find_most_dangerous_scenario(tracks):
+    most_dangerous_pair = None
+    highest_risk_score = -1
+    time_of_event = None
+
+    for track_i in tracks:
+        relevant_keys = ['precedingId', 'followingId']
+
+        # Retrieve and flatten relevant IDs, then add to a set for uniqueness
+        relevant_ids_set = set()
+        for key in relevant_keys:
+            if track_i.get(key) is not None:
+                relevant_ids = np.array(track_i[key]).flatten()
+                relevant_ids_set.update(relevant_ids)
+        relevant_ids_set.discard(0)
+        for rel_id in relevant_ids_set:
+            track_j = tracks[rel_id-1]
+
+            set_a = set(track_i['frame'])
+            set_b = set(track_j['frame'])
+            common_frames = list(set_a.intersection(set_b))
+            common_frames.sort() 
+
+            for frame in common_frames:
+                frame_index_i = np.where(track_i['frame'] == frame)[0][0]
+                frame_index_j = np.where(track_j['frame'] == frame)[0][0]
+                if track_i['ttc'][frame_index_i] != 0 and track_j['ttc'][frame_index_j] != 0:
+                # Calculate risk score only if both TTC values are positive
+                    ttc_i = min(np.abs(track_i['ttc'][frame_index_i]), np.abs(track_j['ttc'][frame_index_j]))
+                    thw_i = min(track_i['thw'][frame_index_i], track_j['thw'][frame_index_j])
+                    # dhw_i = max(track_i['dhw'][frame_index_i], track_j['dhw'][frame_index_j])
+
+                    risk_score = (1 / (ttc_i + 1e-5)) + (4 / (thw_i + 1e-5)) 
+
+                    if risk_score > highest_risk_score:
+                        highest_risk_score = risk_score
+                        vehicle_i_info = {
+                            'location': track_i['bbox'][frame_index_i],
+                            'speed': track_i['xVelocity'][frame_index_i],
+                            'acceleration': track_i['xAcceleration'][frame_index_i],
+                            'lane_id': track_i['laneId'][frame_index_i]
+                        }
+
+                        vehicle_j_info = {
+                            'location': track_j['bbox'][frame_index_j],
+                            'speed': track_j['xVelocity'][frame_index_j],
+                            'acceleration': track_j['xAcceleration'][frame_index_j],
+                            'lane_id': track_j['laneId'][frame_index_j]
+                        }
+
+
+    return vehicle_i_info, vehicle_j_info
+
 def load_and_process_scenario(track_number, base_dir):
     file_paths = {
         'input_static_path': f"{base_dir}{track_number:02}_tracksMeta.csv",
@@ -50,11 +103,13 @@ def load_and_process_scenario(track_number, base_dir):
     
     truck_speeds = []
     truck_accelerations = []
+    vehicle_i_info, vehicle_j_info = find_most_dangerous_scenario(tracks)
 
     for track in tracks:
-        v_id = track['id']
         if type(track['id']) ==np.ndarray:
             v_id = track['id'][0]
+        else:
+            v_id = track['id']
         info = static_info[v_id]
         if info['class'] == 'Car':
             car_speeds.append(np.abs(info['meanXVelocity']))
@@ -75,7 +130,7 @@ def load_and_process_scenario(track_number, base_dir):
         'acceleration': truck_accelerations
     })
 
-    return car_features, truck_features
+    return vehicle_i_info, vehicle_j_info, car_features, truck_features
 
 def calculate_distributions(features, labels):
     cluster_distributions = {}
@@ -139,12 +194,19 @@ if __name__ == '__main__':
     HIGHD_DIR = '/home/zach/highD/data/'
     all_car_features = []
     all_truck_features = []
-
+    dangerous_scenarios = {}
     for i in range(1, 61):  # Assuming scenarios are numbered from 1 to 60
-        car_features, truck_features = load_and_process_scenario(i, HIGHD_DIR)
+        vehicle_i_info, vehicle_j_info, car_features, truck_features = load_and_process_scenario(i, HIGHD_DIR)
         all_car_features.append(car_features)
         all_truck_features.append(truck_features)
+        dangerous_scenarios[i] = {
+            'vehicle_i_info': vehicle_i_info,
+            'vehicle_j_info': vehicle_j_info,
+            'scenario': i
+        }
+    scenarios_df = pd.DataFrame.from_dict(dangerous_scenarios, orient='index')
 
+    scenarios_df.to_csv('highwayenv_scenario_data.csv', index=False)
     all_car_features_df = pd.concat(all_car_features, ignore_index=True)
     all_car_features_df_scaled = all_car_features_df.copy()
     scaler = MinMaxScaler()

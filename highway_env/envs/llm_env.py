@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Text, Tuple, TypeVar
 
 import numpy as np
+import json
 import random
 import ast
 from highway_env import utils
@@ -58,6 +59,8 @@ class LLMEnv(AbstractEnv):
                 "aggressive_vehicle_ratio": 0.3, 
                 "defensive_vehicle_ratio": 0.2,
                 "truck_vehicle_ratio": 0.1,
+                'vehicle_i_info': None,
+                'vehicle_j_info': None,
             }
         )
         return config
@@ -84,12 +87,10 @@ class LLMEnv(AbstractEnv):
         num_aggressive = int(total_vehicles * self.config["aggressive_vehicle_ratio"])
         num_defensive = int(total_vehicles * self.config["defensive_vehicle_ratio"])
         num_truck = int(total_vehicles * self.config["truck_vehicle_ratio"])
-        num_normal = total_vehicles - num_aggressive - num_defensive
         self.controlled_vehicles = []
 
         for _ in range(total_vehicles // 2):
-            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_normal)
-
+            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, total_vehicles)
         ego_vehicle = Vehicle.create_random(
             self.road,
             speed=25,
@@ -99,24 +100,36 @@ class LLMEnv(AbstractEnv):
         ego_vehicle = self.action_type.vehicle_class(
             self.road, ego_vehicle.position, ego_vehicle.heading, ego_vehicle.speed
         )
+        if self.config["vehicle_i_info"]:
+            vehicle_i_details = json.loads(self.config["vehicle_i_info"].replace("'", '"').replace('array(', '[').replace(')', ']'))
+            vehicle_j_details = json.loads(self.config["vehicle_j_info"].replace("'", '"').replace('array(', '[').replace(')', ']'))
+
+            vehicle_j = MotorVehicle(
+                self.road,
+                position=(ego_vehicle.position[0] + np.abs(vehicle_j_details["location"][0][0]- vehicle_i_details["location"][0][0]), vehicle_j_details['lane_id'] % 3 * 4),
+                speed=vehicle_j_details["speed"],
+            )
+            ego_vehicle.position=(ego_vehicle.position[0], vehicle_i_details['lane_id'] % 3 * 4)
+            ego_vehicle = self.action_type.vehicle_class(
+                self.road, ego_vehicle.position, 0., vehicle_i_details["speed"]
+            )
+            self.road.vehicles.append(vehicle_j)
+        #import pdb; pdb.set_trace() 
         self.controlled_vehicles.append(ego_vehicle)
         self.road.vehicles.append(ego_vehicle)
-
         for _ in range(total_vehicles // 2, total_vehicles):
-            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, num_normal)
+            self.add_random_vehicle(num_aggressive, num_defensive, num_truck, total_vehicles)
 
 
-    def add_random_vehicle(self, num_aggressive, num_defensive, num_truck, num_normal):
-        total_vehicles = num_aggressive + num_defensive + num_normal
+    def add_random_vehicle(self, num_aggressive, num_defensive, num_truck, total_vehicles):
 
-        # Randomly select vehicle type based on their proportions
         rand_choice = random.randint(1, total_vehicles)
         if rand_choice <= num_aggressive:
             vehicle = AggressiveIDMVehicle.create_random(self.road, speed=calculate_speed(AggressiveIDMVehicle), spacing=1 / self.config["vehicles_density"])
         elif rand_choice <= num_aggressive + num_defensive:
             vehicle = DefensiveIDMVehicle.create_random(self.road, speed=calculate_speed(DefensiveIDMVehicle), spacing=1 / self.config["vehicles_density"])
         elif rand_choice <= num_aggressive + num_defensive + num_truck:
-            vehicle = TruckVehicle.create_random(self.road, spacing=1 / self.config["vehicles_density"])
+            vehicle = TruckVehicle.create_random(self.road, speed=calculate_speed(TruckVehicle), spacing=1 / self.config["vehicles_density"])
         else:
             vehicle = RegularIDMVehicle.create_random(self.road, speed=calculate_speed(RegularIDMVehicle), spacing=1 / self.config["vehicles_density"])
         self.road.vehicles.append(vehicle)

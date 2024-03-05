@@ -9,3 +9,4 @@ logs/
 experiments
 __pycache__/
 wandb/
+corner_case_configurations

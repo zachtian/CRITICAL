@@ -621,6 +621,7 @@ class DefensiveIDMVehicle(IDMVehicle):
         self.POLITENESS = 0.9  # More politeness
 
 class TruckVehicle(IDMVehicle):
+    params = {'speed_mean': 23.9, 'speed_std': 2.8, 'acc_mean': 0.10, 'acc_std': 0.12}
     def __init__(self, road, position, heading=0, speed=0, target_lane_index=None, target_speed=None, route=None):
         super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
         self.LENGTH = 10.0  
