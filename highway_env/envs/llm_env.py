@@ -100,24 +100,32 @@ class LLMEnv(AbstractEnv):
         ego_vehicle = self.action_type.vehicle_class(
             self.road, ego_vehicle.position, ego_vehicle.heading, ego_vehicle.speed
         )
+        num_vehicles_to_add = 0
         if self.config["vehicle_i_info"]:
             vehicle_i_details = json.loads(self.config["vehicle_i_info"].replace("'", '"').replace('array(', '[').replace(')', ']'))
             vehicle_j_details = json.loads(self.config["vehicle_j_info"].replace("'", '"').replace('array(', '[').replace(')', ']'))
-
-            vehicle_j = MotorVehicle(
+            ego_vehicle = Vehicle.create_random(
                 self.road,
-                position=(ego_vehicle.position[0] + np.abs(vehicle_j_details["location"][0][0]- vehicle_i_details["location"][0][0]), vehicle_j_details['lane_id'] % 3 * 4),
-                speed=vehicle_j_details["speed"],
+                speed=np.abs(vehicle_i_details["speed"]),
+                lane_id=self.config["initial_lane_id"],
+                spacing=self.config["ego_spacing"]
+            )
+            distance_between_vehicles = np.abs(vehicle_j_details["location"][0][0]- vehicle_i_details["location"][0][0])
+            for _ in range(int(distance_between_vehicles) % 25):
+                self.add_random_vehicle(num_aggressive, num_defensive, num_truck, total_vehicles)
+            vehicle_j = RegularIDMVehicle(
+                self.road,
+                position=(ego_vehicle.position[0] + distance_between_vehicles, vehicle_j_details['lane_id'] % 3 * 4),
+                speed=np.abs(vehicle_j_details["speed"]),
             )
             ego_vehicle.position=(ego_vehicle.position[0], vehicle_i_details['lane_id'] % 3 * 4)
             ego_vehicle = self.action_type.vehicle_class(
-                self.road, ego_vehicle.position, 0., vehicle_i_details["speed"]
+                self.road, ego_vehicle.position, ego_vehicle.heading, ego_vehicle.speed
             )
             self.road.vehicles.append(vehicle_j)
-        #import pdb; pdb.set_trace() 
         self.controlled_vehicles.append(ego_vehicle)
         self.road.vehicles.append(ego_vehicle)
-        for _ in range(total_vehicles // 2, total_vehicles):
+        for _ in range(total_vehicles // 2 + num_vehicles_to_add, total_vehicles):
             self.add_random_vehicle(num_aggressive, num_defensive, num_truck, total_vehicles)
 
 

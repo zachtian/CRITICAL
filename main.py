@@ -318,7 +318,7 @@ def generate_highwayenv_config(csv_file):
     defensive_vehicle_ratio = float(defensive_vehicle_counts / total_vehicles)
     truck_vehicle_ratio = float(selected_row['num_trucks'] / total_vehicles)
     config = {
-        "vehicles_density": selected_row['density'] /2.5,
+        "vehicles_density": selected_row['density'],
         "aggressive_vehicle_ratio": aggressive_vehicle_ratio,
         "defensive_vehicle_ratio": defensive_vehicle_ratio,
         "truck_vehicle_ratio": truck_vehicle_ratio,

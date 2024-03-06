@@ -82,8 +82,6 @@ def find_most_dangerous_scenario(tracks):
                             'acceleration': track_j['xAcceleration'][frame_index_j],
                             'lane_id': track_j['laneId'][frame_index_j]
                         }
-
-
     return vehicle_i_info, vehicle_j_info
 
 def load_and_process_scenario(track_number, base_dir):
@@ -166,7 +164,9 @@ def classify_and_count_vehicles(track_number, base_dir, cluster_labels, start_in
         tracks = pickle.load(fp)
     with open(file_paths["input_meta_path"], "rb") as fp:
         meta = read_meta_info(file_paths)
-    features = extract_features(tracks)
+    with open(file_paths["input_meta_path"], "rb") as fp:
+        static_info = read_static_info(file_paths)
+
     end_index = start_index + len(tracks)
     scenario_labels = cluster_labels[start_index:end_index]
 
@@ -176,17 +176,32 @@ def classify_and_count_vehicles(track_number, base_dir, cluster_labels, start_in
 
     num_trucks = meta['numTrucks']
     num_cars = meta['numCars']
-    total_vehicles = num_aggressive + num_defensive + num_regular
+    road_length = 420  # in meters
+    total_frames = meta['duration'] * meta['frameRate']  # Total number of frames
 
-    density = num_vehicles / 420
+    # Calculate the sum of frames each car is present
+    total_car_frames = sum(static_info[car_id]['numFrames']
+                        for car_id in static_info)
+    total_car_speed = sum(np.abs(static_info[car_id]['meanXVelocity'])
+                        for car_id in static_info )
+    average_cars_present = total_car_frames / total_frames
+    average_car_width = sum(static_info[car_id]['width'] for car_id in static_info)/len(static_info)  
 
+    # Calculate the average distance between cars
+    offset =  (road_length + average_car_width) / average_cars_present
+    average_speed = total_car_speed/len(static_info)  
+    number_of_lanes = 3  
+
+    default_spacing = 12 + 1.0 * average_speed
+
+    spacing = offset / (default_spacing * np.exp(-5 / 40 * number_of_lanes))
     return {
         'num_aggressive': num_aggressive,
         'num_defensive': num_defensive,
         'num_regular': num_regular,
         'num_trucks': num_trucks,
         'num_cars': num_cars,
-        'density': density 
+        'density': spacing 
     }, end_index
 
 if __name__ == '__main__':
@@ -195,67 +210,67 @@ if __name__ == '__main__':
     all_car_features = []
     all_truck_features = []
     dangerous_scenarios = {}
-    for i in range(1, 61):  # Assuming scenarios are numbered from 1 to 60
-        vehicle_i_info, vehicle_j_info, car_features, truck_features = load_and_process_scenario(i, HIGHD_DIR)
-        all_car_features.append(car_features)
-        all_truck_features.append(truck_features)
-        dangerous_scenarios[i] = {
-            'vehicle_i_info': vehicle_i_info,
-            'vehicle_j_info': vehicle_j_info,
-            'scenario': i
-        }
-    scenarios_df = pd.DataFrame.from_dict(dangerous_scenarios, orient='index')
+    # for i in range(1, 61):  # Assuming scenarios are numbered from 1 to 60
+    #     vehicle_i_info, vehicle_j_info, car_features, truck_features = load_and_process_scenario(i, HIGHD_DIR)
+    #     all_car_features.append(car_features)
+    #     all_truck_features.append(truck_features)
+    #     dangerous_scenarios[i] = {
+    #         'vehicle_i_info': vehicle_i_info,
+    #         'vehicle_j_info': vehicle_j_info,
+    #         'scenario': i
+    #     }
+    # scenarios_df = pd.DataFrame.from_dict(dangerous_scenarios, orient='index')
 
-    scenarios_df.to_csv('highwayenv_scenario_data.csv', index=False)
-    all_car_features_df = pd.concat(all_car_features, ignore_index=True)
-    all_car_features_df_scaled = all_car_features_df.copy()
-    scaler = MinMaxScaler()
-    all_car_features_df_scaled = scaler.fit_transform(all_car_features_df[['speed', 'acceleration']])
-    all_car_features_df_scaled = pd.DataFrame(all_car_features_df_scaled, columns=['speed', 'acceleration'])
+    #scenarios_df.to_csv('highwayenv_scenario_data.csv', index=False)
+    # all_car_features_df = pd.concat(all_car_features, ignore_index=True)
+    # all_car_features_df_scaled = all_car_features_df.copy()
+    # scaler = MinMaxScaler()
+    # all_car_features_df_scaled = scaler.fit_transform(all_car_features_df[['speed', 'acceleration']])
+    # all_car_features_df_scaled = pd.DataFrame(all_car_features_df_scaled, columns=['speed', 'acceleration'])
 
-    all_car_features_df_scaled['lane_changes'] = all_car_features_df['lane_changes']
-    cluster_labels, kproto_model = perform_kprototypes_clustering(all_car_features_df_scaled)
-    visualize_clusters_3d(all_car_features_df_scaled.to_numpy(), cluster_labels)
+    # all_car_features_df_scaled['lane_changes'] = all_car_features_df['lane_changes']
+    # cluster_labels, kproto_model = perform_kprototypes_clustering(all_car_features_df_scaled)
+    # visualize_clusters_3d(all_car_features_df_scaled.to_numpy(), cluster_labels)
 
-    distributions = calculate_distributions(all_car_features_df_scaled, cluster_labels)
+    # distributions = calculate_distributions(all_car_features_df_scaled, cluster_labels)
 
-    for cluster, stats in distributions.items():
-        print(f"Cluster {cluster} - Speed: Mean={stats['speed']['mean']}, Std={stats['speed']['std']}, Min={stats['speed']['min']}, Max={stats['speed']['max']}")
-        print(f"Cluster {cluster} - Acceleration: Mean={stats['acceleration']['mean']}, Std={stats['acceleration']['std']}, Min={stats['acceleration']['min']}, Max={stats['acceleration']['max']}")
-    np.save('cluster_labels.npy', cluster_labels)
+    # for cluster, stats in distributions.items():
+    #     print(f"Cluster {cluster} - Speed: Mean={stats['speed']['mean']}, Std={stats['speed']['std']}, Min={stats['speed']['min']}, Max={stats['speed']['max']}")
+    #     print(f"Cluster {cluster} - Acceleration: Mean={stats['acceleration']['mean']}, Std={stats['acceleration']['std']}, Min={stats['acceleration']['min']}, Max={stats['acceleration']['max']}")
+    # np.save('cluster_labels.npy', cluster_labels)
 
-    # Concatenate all truck features into a single DataFrame
-    all_truck_features_df = pd.concat(all_truck_features, ignore_index=True)
+    # # Concatenate all truck features into a single DataFrame
+    # all_truck_features_df = pd.concat(all_truck_features, ignore_index=True)
 
-    # Calculate statistics for trucks
-    truck_speed_stats = {
-        'mean': np.mean(all_truck_features_df['speed']),
-        'std': np.std(all_truck_features_df['speed']),
-        'min': np.min(all_truck_features_df['speed']),
-        'max': np.max(all_truck_features_df['speed'])
-    }
-    truck_acceleration_stats = {
-        'mean': np.mean(all_truck_features_df['acceleration']),
-        'std': np.std(all_truck_features_df['acceleration']),
-        'min': np.min(all_truck_features_df['acceleration']),
-        'max': np.max(all_truck_features_df['acceleration'])
-    }
+    # # Calculate statistics for trucks
+    # truck_speed_stats = {
+    #     'mean': np.mean(all_truck_features_df['speed']),
+    #     'std': np.std(all_truck_features_df['speed']),
+    #     'min': np.min(all_truck_features_df['speed']),
+    #     'max': np.max(all_truck_features_df['speed'])
+    # }
+    # truck_acceleration_stats = {
+    #     'mean': np.mean(all_truck_features_df['acceleration']),
+    #     'std': np.std(all_truck_features_df['acceleration']),
+    #     'min': np.min(all_truck_features_df['acceleration']),
+    #     'max': np.max(all_truck_features_df['acceleration'])
+    # }
 
-    print(f"Truck Speed: Mean={truck_speed_stats['mean']}, Std={truck_speed_stats['std']}, Min={truck_speed_stats['min']}, Max={truck_speed_stats['max']}")
-    print(f"Truck Acceleration: Mean={truck_acceleration_stats['mean']}, Std={truck_acceleration_stats['std']}, Min={truck_acceleration_stats['min']}, Max={truck_acceleration_stats['max']}")
-    # cluster_labels = np.load('cluster_labels.npy')
-    # results = []
-    # start_index=0
-    # for i in range(1, 61):  
-    #     vehicle_counts, start_index = classify_and_count_vehicles(i, HIGHD_DIR, cluster_labels, start_index)
-    #     print(f"Scenario {i}: {vehicle_counts}")
-    #     results.append(vehicle_counts)
+    # print(f"Truck Speed: Mean={truck_speed_stats['mean']}, Std={truck_speed_stats['std']}, Min={truck_speed_stats['min']}, Max={truck_speed_stats['max']}")
+    # print(f"Truck Acceleration: Mean={truck_acceleration_stats['mean']}, Std={truck_acceleration_stats['std']}, Min={truck_acceleration_stats['min']}, Max={truck_acceleration_stats['max']}")
+    cluster_labels = np.load('cluster_labels.npy')
+    results = []
+    start_index=0
+    for i in range(1, 61):  
+        vehicle_counts, start_index = classify_and_count_vehicles(i, HIGHD_DIR, cluster_labels, start_index)
+        print(f"Scenario {i}: {vehicle_counts}")
+        results.append(vehicle_counts)
 
-    # # Convert list of dictionaries to DataFrame
-    # results_df = pd.DataFrame(results)
+    # Convert list of dictionaries to DataFrame
+    results_df = pd.DataFrame(results)
 
-    # # Optionally, add a column for scenario numbers if needed
-    # results_df['scenario'] = range(1, len(results) + 1)
+    # Optionally, add a column for scenario numbers if needed
+    results_df['scenario'] = range(1, len(results) + 1)
 
-    # # Save to CSV
-    # results_df.to_csv('highwayenv_scenario_data.csv', index=False)
+    # Save to CSV
+    results_df.to_csv('highwayenv_scenario_data.csv', index=False)
