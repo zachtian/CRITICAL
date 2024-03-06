@@ -6,6 +6,7 @@ from stable_baselines3.common.save_util import save_to_pkl
 import wandb
 from wandb.integration.sb3 import WandbCallback
 
+import re
 import os
 import csv
 import json
@@ -32,7 +33,7 @@ def is_within_range(config, schema):
     return True
 
 class FailureAnalysisCallback(BaseCallback):
-    def __init__(self, env, experiment_path, USE_LLM = False, verbose=0):
+    def __init__(self, env, experiment_path, USE_LLM = False, EDGE_CASE=False, verbose=0):
         super(FailureAnalysisCallback, self).__init__(verbose)
         self.failures = []
         self.env = env 
@@ -41,9 +42,10 @@ class FailureAnalysisCallback(BaseCallback):
         self.failure_file = os.path.join(experiment_path, 'failures.csv')
         self.config_file = os.path.join(experiment_path, 'config.csv')
         self.HIGHD_df = 'HIGHD_data_train.csv'
-        HIGHD_config = generate_highwayenv_config(self.HIGHD_df)
+        HIGHD_config, _ = generate_highwayenv_config(self.HIGHD_df)
         self.update_environment_config(HIGHD_config)
         self.use_llm = USE_LLM
+        self.edge_case = EDGE_CASE
         self.episode_rewards = []
         self.episode_lengths = []
         self.cumulative_reward = 0
@@ -55,6 +57,7 @@ class FailureAnalysisCallback(BaseCallback):
         self.loop_count = 0
         self.corner_case_configurations_lat_lon = ""
         self.corner_case_configurations_ttc_near_miss = ""
+        self.prob_scenes = np.ones(50)
         self.env_json_schema = {
             "title": "Environment Configuration",
             "description": "Configuration settings of the simulation environment.",
@@ -88,7 +91,6 @@ class FailureAnalysisCallback(BaseCallback):
                 "truck_vehicle_ratio"
             ]
         }
-
 
     def _on_step(self) -> bool:
         self.step_counter += 1
@@ -144,8 +146,10 @@ class FailureAnalysisCallback(BaseCallback):
                 dumps = json.dumps(self.env_json_schema, indent=2)
                 recent_crash_types = [failure['crash_type'] for failure in self.failures]
                 
-                small_config = self.get_small_config()
-                HIGHD_config = generate_highwayenv_config(self.HIGHD_df)
+                inner_env = self.env.envs[0]
+                full_config = dict(inner_env.unwrapped.config)
+                small_config = {k: full_config[k] for k in ('vehicles_density', 'aggressive_vehicle_ratio', 'defensive_vehicle_ratio', 'truck_vehicle_ratio')}
+                HIGHD_config, config_index = generate_highwayenv_config(self.HIGHD_df, self.prob_scenes)
 
                 self.config_history.append(small_config)
                 self.reward_history.append({
@@ -176,9 +180,7 @@ class FailureAnalysisCallback(BaseCallback):
                 )
                 prompt = ChatPromptTemplate.from_messages(messages)
                 chain = prompt | llm | StrOutputParser()
-
                 self.failures.clear()
-
                 for attempt in range(5):
                     try:
                         response = chain.invoke({"dumps": dumps})
@@ -199,27 +201,27 @@ class FailureAnalysisCallback(BaseCallback):
                         print("Error updating environment config:", e)
                         if attempt == 4:
                             import pdb; pdb.set_trace()
-
             else:
-                HIGHD_config = generate_highwayenv_config(self.HIGHD_df)
+                HIGHD_config, config_index = generate_highwayenv_config(self.HIGHD_df, self.prob_scenes)
                 self.update_environment_config(HIGHD_config)
 
             edge_case_values_dict = {
                 "edge_case_count_for_lat_and_lon": float(self.edge_case_lon_and_lat_count),
-                "edge_case_count_for_TTC_near_miss": float(self.edge_case_TTC_near_miss_count)              
+                "edge_case_count_for_TTC_near_miss": float(self.edge_case_TTC_near_miss_count),
+                "config_index": int(config_index)   
             }
             self.write_config_to_json(edge_case_values_dict, self.config_file, optional_index= (self.loop_count - 1))
             self.edge_case_lon_and_lat_count = 0
             self.edge_case_TTC_near_miss_count = 0
 
-        if (self.step_counter != 0) and (self.step_counter % 500 == 0):
-            configuration_file_name = f"corner_case_configurations/exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}/for_step_{self.step_counter}"
+        if self.edge_case and (self.step_counter != 0) and (self.step_counter % 1000 == 0):
+            configuration_file_name = f"experiments/exp_{RL_MODEL}_{USE_LLM}_{EDGE_CASE}_{next_exp_number}/for_step_{self.step_counter}"
 
             directory = os.path.dirname(configuration_file_name)
             if not os.path.exists(directory):
                 os.makedirs(directory)
             
-            file_path = f'experiments/exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}/config.csv'
+            file_path = f'experiments/exp_{RL_MODEL}_{USE_LLM}_{EDGE_CASE}_{next_exp_number}/config.csv'
             analyzer = EdgeCaseAnalyzerFromJSON(file_path)
             analyzer.plot_distribution()  # Must be called before the other methods
             lat_lon_configs_str, ttc_near_miss_configs_str = analyzer.get_configurations_for_last_bins()
@@ -229,6 +231,14 @@ class FailureAnalysisCallback(BaseCallback):
 
             self.write_config_to_json(self.corner_case_configurations_lat_lon, configuration_file_name)
             self.write_config_to_json(self.corner_case_configurations_ttc_near_miss, configuration_file_name)
+            pattern = re.compile(r"config_index: (\d+)")
+
+            matches = pattern.findall(self.corner_case_configurations_lat_lon + self.corner_case_configurations_ttc_near_miss)
+            for match in matches:
+                index = int(match)
+                if index < len(self.prob_scenes):
+                    self.prob_scenes[index] += 0.1
+            print(self.prob_scenes)
 
         if REAL_TIME_RENDERING:
             self.model.env.render()
@@ -240,15 +250,7 @@ class FailureAnalysisCallback(BaseCallback):
             return 'crashed'
         if 'went_offroad' in info and info['went_offroad']:
             return 'went_offroad'
-
         return None
-
-    def get_small_config(self):
-        inner_env = self.env.envs[0]
-        full_config = dict(inner_env.unwrapped.config)
-        small_config = {k: full_config[k] for k in ('vehicles_density', 'aggressive_vehicle_ratio', 'defensive_vehicle_ratio', 'truck_vehicle_ratio')}
-
-        return small_config
 
     def update_environment_config(self, new_config):
         parsed_config = json.loads(new_config[new_config.find('{'):new_config.rfind('}') + 1])
@@ -304,9 +306,12 @@ class FailureAnalysisCallback(BaseCallback):
             with open(file_name, 'w') as json_file:
                 json.dump(existing_data, json_file, indent=4)
 
-def generate_highwayenv_config(csv_file):
+def generate_highwayenv_config(csv_file, probabilities = np.ones(50)):
     df = pd.read_csv(csv_file)
-    selected_row = df.sample(n=1).iloc[0]
+    probabilities = probabilities / probabilities.sum()
+    sampled_row = df.sample(n=1, weights=probabilities)
+    selected_row = sampled_row.iloc[0]
+    selected_row_index = sampled_row.index[0] 
 
     aggressive_vehicle_counts = selected_row['num_aggressive']
     defensive_vehicle_counts = selected_row['num_defensive']
@@ -327,29 +332,30 @@ def generate_highwayenv_config(csv_file):
     }
 
     config_json = json.dumps(config, indent=4)
-    return config_json
+    return config_json, selected_row_index
 
 llm = ChatOllama(
     model="llama2:13b",
 )
 
-
 if __name__ == "__main__":
     if not os.path.exists("videos"):
         os.makedirs("videos")
 
-    REAL_TIME_RENDERING = True
+    REAL_TIME_RENDERING = False
     USE_LLM = False
+    EDGE_CASE = False
+
     POLICY_NET = 'mlp'
     RL_MODEL = 'PPO'
     if not os.path.exists('experiments'):
         os.makedirs('experiments', exist_ok=True)
 
     next_exp_number = 1
-    while os.path.exists(os.path.join('experiments', f"exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}")):
+    while os.path.exists(os.path.join('experiments', f"exp_{RL_MODEL}_{USE_LLM}_{EDGE_CASE}_{next_exp_number}")):
         next_exp_number += 1
 
-    experiment_path = os.path.join('experiments', f"exp_{RL_MODEL}_{USE_LLM}_{next_exp_number}")
+    experiment_path = os.path.join('experiments', f"exp_{RL_MODEL}_{USE_LLM}_{EDGE_CASE}_{next_exp_number}")
     os.makedirs(experiment_path, exist_ok=True)
 
     env = DummyVecEnv([lambda: gym.make('llm-v0', render_mode='rgb_array')])
@@ -408,7 +414,7 @@ if __name__ == "__main__":
     #     model_save_path=f"{wandb.run.dir}/model",  # save model in wandb directory
     #     verbose=2,
     # )
-    callback = FailureAnalysisCallback(env, experiment_path, USE_LLM)
+    callback = FailureAnalysisCallback(env, experiment_path, USE_LLM, EDGE_CASE)
     model.learn(int(2e5), callback=[callback])
     model.save(os.path.join(experiment_path, 'trained_model'))
 

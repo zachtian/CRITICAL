@@ -48,7 +48,6 @@ class LLMEnv(AbstractEnv):
                 "initial_lane_id": None,
                 "duration": 60,  # [s]
                 "ego_spacing": 2,
-                "vehicles_density": 1.3,
                 "collision_reward": -1,  # The reward received when colliding with a vehicle.
                 "right_lane_reward": 0.1,  # The reward received when driving on the right-most lanes, linearly mapped to
                 "high_speed_reward": 0.4,  # The reward received when driving at full speed, linearly mapped to zero for
@@ -56,9 +55,12 @@ class LLMEnv(AbstractEnv):
                 "reward_speed_range": [20, 30],
                 "normalize_reward": True,
                 "offroad_terminal": True,
+
+                "vehicles_density": 1.3,
                 "aggressive_vehicle_ratio": 0.3, 
                 "defensive_vehicle_ratio": 0.2,
                 "truck_vehicle_ratio": 0.1,
+
                 'vehicle_i_info': None,
                 'vehicle_j_info': None,
             }
@@ -102,7 +104,10 @@ class LLMEnv(AbstractEnv):
         )
         num_vehicles_to_add = 0
         if self.config["vehicle_i_info"]:
-            vehicle_i_details = json.loads(self.config["vehicle_i_info"].replace("'", '"').replace('array(', '[').replace(')', ']'))
+            try:
+                vehicle_i_details = json.loads(self.config["vehicle_i_info"].replace("'", '"').replace('array(', '[').replace(')', ']'))
+            except:
+                import pdb; pdb.set_trace()
             vehicle_j_details = json.loads(self.config["vehicle_j_info"].replace("'", '"').replace('array(', '[').replace(')', ']'))
             ego_vehicle = Vehicle.create_random(
                 self.road,
