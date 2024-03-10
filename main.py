@@ -237,7 +237,8 @@ class FailureAnalysisCallback(BaseCallback):
             for match in matches:
                 index = int(match)
                 if index < len(self.prob_scenes):
-                    self.prob_scenes[index] += 0.1
+                    self.prob_scenes[index] *= 1.05
+            self.prob_scenes= self.prob_scenes / self.prob_scenes.sum()
             print(self.prob_scenes)
 
         if REAL_TIME_RENDERING:
@@ -344,7 +345,7 @@ if __name__ == "__main__":
 
     REAL_TIME_RENDERING = False
     USE_LLM = False
-    EDGE_CASE = False
+    EDGE_CASE = True
 
     POLICY_NET = 'mlp'
     RL_MODEL = 'PPO'

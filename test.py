@@ -1,41 +1,44 @@
+import os
+import gym
+from stable_baselines3 import DQN, PPO
+from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
+from main import FailureAnalysisCallback
 
-from langchain.schema import HumanMessage
-from langchain_community.chat_models import ChatOllama
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-import json
+if __name__ == "__main__":
+    # Set the path to the trained model and the environment
+    experiment_path = 'experiments/exp_PPO_False_False_1'
+    model_path = os.path.join(experiment_path, 'trained_model')
+    env_name = 'llm-v0'
 
-json_schema = {
-    "title": "Person",
-    "description": "Identifying information about a person.",
-    "type": "object",
-    "properties": {
-        "name": {"title": "Name", "description": "The person's name", "type": "string"},
-        "age": {"title": "Age", "description": "The person's age", "type": "integer"},
-        "fav_food": {
-            "title": "Fav Food",
-            "description": "The person's favorite food",
-            "type": "string",
-        },
-    },
-    "required": ["name", "age"],
-}
+    model_type = experiment_path.split('_')[1]
 
-llm = ChatOllama(model="llama2")
+    # Load the trained model based on the model type
+    if model_type == 'DQN':
+        model = DQN.load(model_path)
+    elif model_type == 'PPO':
+        model = PPO.load(model_path)
 
-messages = [
-    HumanMessage(
-        content="Please tell me about a person using the following JSON schema:"
-    ),
-    HumanMessage(content="{dumps}"),
-    HumanMessage(
-        content="Now, considering the schema, tell me about a person named John who is 35 years old and loves pizza."
-    ),
-]
+    # Create the environment for testing
+    test_env = gym.make(env_name)
 
-prompt = ChatPromptTemplate.from_messages(messages)
-dumps = json.dumps(json_schema, indent=2)
+    # Number of episodes for testing
+    num_test_episodes = 10
 
-chain = prompt | llm | StrOutputParser()
+    # Testing loop
+    for episode in range(num_test_episodes):
+        obs = test_env.reset()
+        done = False
+        episode_rewards = 0
 
-print(chain.invoke({"dumps": dumps}))
+        while not done:
+            action, _states = model.predict(obs)
+            obs, reward, done, info = test_env.step(action)
+            episode_rewards += reward
+
+            if REAL_TIME_RENDERING:
+                test_env.render()
+
+        print(f"Episode {episode + 1}: Total Reward = {episode_rewards}")
+
+    # Close the environment
+    test_env.close()
