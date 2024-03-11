@@ -237,7 +237,8 @@ class FailureAnalysisCallback(BaseCallback):
             for match in matches:
                 index = int(match)
                 if index < len(self.prob_scenes):
-                    self.prob_scenes[index] *= 1.05
+                    increment = 0.05 / np.sqrt(self.prob_scenes[index])
+                    self.prob_scenes[index] += increment
             self.prob_scenes= self.prob_scenes / self.prob_scenes.sum()
             print(self.prob_scenes)
 
