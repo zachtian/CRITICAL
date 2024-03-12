@@ -171,9 +171,8 @@ class FailureAnalysisCallback(BaseCallback):
 
                 for i in range(1, min(len(self.config_history) - 1, 5)  + 1):
                     step_number = len(self.config_history) - i 
-                    config_index = -i - 1  
-                    messages.append(HumanMessage(content=f"Previous Episode Config {step_number}: {self.config_history[config_index]}"))
-                    messages.append(HumanMessage(content=f"Previous Episode Lengths {step_number}: {self.reward_history[config_index]}"))
+                    messages.append(HumanMessage(content=f"Previous Episode Config {step_number}: {self.config_history[-i - 1]}"))
+                    messages.append(HumanMessage(content=f"Previous Episode Lengths {step_number}: {self.reward_history[-i - 1]}"))
 
                 messages.append(
                     HumanMessage(content="Considering the insights from the Real-World Traffic Data and the observed simulation trends, suggest modifications to enhance scenario realism. Focus on adjusting the following properties of the environment configuration to reflect real-world driving behaviors and patterns: vehicles_density, aggressive_vehicle_ratio, defensive_vehicle_ratio, truck_vehicle_ratio. Your response should be a JSON dictionary containing only these four elements.")
@@ -337,7 +336,8 @@ def generate_highwayenv_config(csv_file, probabilities = np.ones(50)):
     return config_json, selected_row_index
 
 llm = ChatOllama(
-    model="llama2:13b",
+    base_url="http://155.198.89.235:11434",
+    model="mistral:7b-instruct-q5_K_M",
 )
 
 if __name__ == "__main__":
@@ -345,7 +345,7 @@ if __name__ == "__main__":
         os.makedirs("videos")
 
     REAL_TIME_RENDERING = False
-    USE_LLM = False
+    USE_LLM = True
     EDGE_CASE = True
 
     POLICY_NET = 'mlp'
