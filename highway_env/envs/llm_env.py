@@ -272,7 +272,7 @@ class LLMEnv(AbstractEnv):
         """
         #new_config = ast.literal_eval(new_config)
         self.config.update(new_config)
-        print("FINAL UPDATED CONFIG PLEASE DOUBLE CHECK", self.config)
+        # print("FINAL UPDATED CONFIG PLEASE DOUBLE CHECK", self.config)
 
 
     def get_lon_and_lat_distance(self, ego_vehicle: Vehicle, other_vehicle: Vehicle):
