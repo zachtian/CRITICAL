@@ -236,9 +236,13 @@ class FailureAnalysisCallback(BaseCallback):
             for match in matches:
                 index = int(match)
                 if index < len(self.prob_scenes):
-                    increment = 0.05 / np.sqrt(self.prob_scenes[index])
-                    self.prob_scenes[index] += increment
+                    self.prob_scenes[index] *=1.01
+            self.prob_scenes *= 0.99
+            if np.max(self.prob_scenes) > 10 * np.min(self.prob_scenes):
+                # Adjust probabilities to bring them within an order of magnitude
+                self.prob_scenes = np.clip(self.prob_scenes, np.max(self.prob_scenes) / 10, np.max(self.prob_scenes))
             self.prob_scenes= self.prob_scenes / self.prob_scenes.sum()
+            
             print(self.prob_scenes)
 
         if REAL_TIME_RENDERING:
@@ -309,7 +313,6 @@ class FailureAnalysisCallback(BaseCallback):
 
 def generate_highwayenv_config(csv_file, probabilities = np.ones(50)):
     df = pd.read_csv(csv_file)
-    probabilities = probabilities / probabilities.sum()
     sampled_row = df.sample(n=1, weights=probabilities)
     selected_row = sampled_row.iloc[0]
     selected_row_index = sampled_row.index[0] 
