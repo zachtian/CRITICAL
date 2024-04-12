@@ -40,4 +40,14 @@ pip install -e .
 
 ## Large Language Model Integration
 
+This section integrates a Large Language Model (LLM) provided by Ollama to enhance the realism and effectiveness of our scenario generation. The LLM utilizes driving data to generate scenario suggestions that are vital for creating adaptive and robust training environments.
 
+### Installing Ollama
+
+To install Ollama, follow the detailed installation instructions on the [Ollama](https://github.com/ollama/ollama).
+
+After installing Ollama, fetch the required LLM model with the following command:
+
+```bash
+ollam pull mistral:7b-instruct-q5_K_M
+```
