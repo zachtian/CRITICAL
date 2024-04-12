@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import gymnasium as gym
 from stable_baselines3 import DQN, PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder
+from stable_baselines3.common.vec_env import DummyVecEnv, VecVideoRecorder, SubprocVecEnv
 from main import FailureAnalysisCallback
 def generate_highwayenv_config(index = 0):
     df = pd.read_csv('HIGHD_data_test.csv')
@@ -32,30 +32,36 @@ def generate_highwayenv_config(index = 0):
     return config_json
 if __name__ == "__main__":
     # Set the path to the trained model and the environment
-    experiment_path = 'experiments/exp_PPO_False_True_1'
+    experiment_path = 'exp_Files/exp_PPO_False_True_1'
     model_path = os.path.join(experiment_path, 'trained_model')
 
     model_type = experiment_path.split('_')[1]
 
     # Load the trained model based on the model type
-    if model_type == 'DQN':
-        model = DQN.load(model_path)
-    elif model_type == 'PPO':
-        model = PPO.load(model_path)
+
+    model = PPO.load(model_path)
+
 
     # Create the environment for testing
     RENDER = False
     if RENDER:
         test_env = gym.make("llm-v0", render_mode="human")
+        
+        
     else:
         test_env = gym.make("llm-v0")
 
     # Number of episodes for testing
     num_test_episodes = 10
-    num_run_per_episodes =10
+    num_run_per_episodes =5
+    total_crashes = 0
+    episode_lengths = []
+    total_rewards = []
     # Testing loop
     for episode in range(num_test_episodes):
         rewards = []
+        episode_crashes = 0
+        total_steps = 0
 
         while len(rewards) < num_run_per_episodes:
             new_config = generate_highwayenv_config(episode)
@@ -64,18 +70,32 @@ if __name__ == "__main__":
             test_env.unwrapped.update_env_config(parsed_config)
 
             episode_rewards = 0
+            steps = 0
             while not done:
                 action, _states = model.predict(obs, deterministic=True)
                 obs, reward, done, truncated, info = test_env.step(int(action))
                 episode_rewards += reward
+                steps += 1
+
                 if RENDER: 
                     test_env.render()
+                # Check for crashes or other termination conditions
+                if info['crashed']:
+                    episode_crashes += 1
+            print('done')
 
-            if episode_rewards >= 1:
-                rewards.append(episode_rewards)
+            total_steps += steps
+            rewards.append(episode_rewards)
 
+        total_crashes += episode_crashes
+        episode_lengths.append(total_steps / len(rewards))
+        total_rewards.append(np.mean(rewards))
 
-        print(f"Episode {episode + 1}: Total Reward = {np.mean(rewards)}")
+        print(f"Episode {episode + 1}: Total Reward = {np.mean(rewards)}, Average Episode Length = {episode_lengths[-1]}, Crashes = {episode_crashes}")
 
     # Close the environment
     test_env.close()
+    print(f"Total rewards: {total_rewards}")
+    # Final statistics
+    print(f"Total crashes over all episodes: {total_crashes}")
+    print(f"Average episode length: {np.mean(episode_lengths)}")

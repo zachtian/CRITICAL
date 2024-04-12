@@ -210,27 +210,27 @@ if __name__ == '__main__':
     all_car_features = []
     all_truck_features = []
     dangerous_scenarios = {}
-    # for i in range(1, 61):  # Assuming scenarios are numbered from 1 to 60
-    #     vehicle_i_info, vehicle_j_info, car_features, truck_features = load_and_process_scenario(i, HIGHD_DIR)
-    #     all_car_features.append(car_features)
-    #     all_truck_features.append(truck_features)
-    #     dangerous_scenarios[i] = {
-    #         'vehicle_i_info': vehicle_i_info,
-    #         'vehicle_j_info': vehicle_j_info,
-    #         'scenario': i
-    #     }
-    # scenarios_df = pd.DataFrame.from_dict(dangerous_scenarios, orient='index')
+    for i in range(1, 61):  # Assuming scenarios are numbered from 1 to 60
+        vehicle_i_info, vehicle_j_info, car_features, truck_features = load_and_process_scenario(i, HIGHD_DIR)
+        all_car_features.append(car_features)
+        all_truck_features.append(truck_features)
+        dangerous_scenarios[i] = {
+            'vehicle_i_info': vehicle_i_info,
+            'vehicle_j_info': vehicle_j_info,
+            'scenario': i
+        }
+    scenarios_df = pd.DataFrame.from_dict(dangerous_scenarios, orient='index')
 
-    #scenarios_df.to_csv('highwayenv_scenario_data.csv', index=False)
-    # all_car_features_df = pd.concat(all_car_features, ignore_index=True)
-    # all_car_features_df_scaled = all_car_features_df.copy()
-    # scaler = MinMaxScaler()
-    # all_car_features_df_scaled = scaler.fit_transform(all_car_features_df[['speed', 'acceleration']])
-    # all_car_features_df_scaled = pd.DataFrame(all_car_features_df_scaled, columns=['speed', 'acceleration'])
+    scenarios_df.to_csv('highwayenv_scenario_data.csv', index=False)
+    all_car_features_df = pd.concat(all_car_features, ignore_index=True)
+    all_car_features_df_scaled = all_car_features_df.copy()
+    scaler = MinMaxScaler()
+    all_car_features_df_scaled = scaler.fit_transform(all_car_features_df[['speed', 'acceleration']])
+    all_car_features_df_scaled = pd.DataFrame(all_car_features_df_scaled, columns=['speed', 'acceleration'])
 
-    # all_car_features_df_scaled['lane_changes'] = all_car_features_df['lane_changes']
-    # cluster_labels, kproto_model = perform_kprototypes_clustering(all_car_features_df_scaled)
-    # visualize_clusters_3d(all_car_features_df_scaled.to_numpy(), cluster_labels)
+    all_car_features_df_scaled['lane_changes'] = all_car_features_df['lane_changes']
+    cluster_labels, kproto_model = perform_kprototypes_clustering(all_car_features_df_scaled)
+    visualize_clusters_3d(all_car_features_df_scaled.to_numpy(), cluster_labels)
 
     # distributions = calculate_distributions(all_car_features_df_scaled, cluster_labels)
 

@@ -339,7 +339,6 @@ def generate_highwayenv_config(csv_file, probabilities = np.ones(50)):
     return config_json, selected_row_index
 
 llm = ChatOllama(
-    base_url="http://155.198.89.235:11434",
     model="mistral:7b-instruct-q5_K_M",
 )
 
@@ -348,11 +347,11 @@ if __name__ == "__main__":
         os.makedirs("videos")
 
     REAL_TIME_RENDERING = False
-    USE_LLM = True
+    USE_LLM = False
     EDGE_CASE = True
 
     POLICY_NET = 'mlp'
-    RL_MODEL = 'PPO'
+    RL_MODEL = 'DQN'
     if not os.path.exists('experiments'):
         os.makedirs('experiments', exist_ok=True)
 
