@@ -13,6 +13,8 @@ import json
 import ast
 import numpy as np
 import pandas as pd
+import argparse
+
 from collections import defaultdict, Counter
 from langchain_community.chat_models import ChatOllama
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
@@ -245,7 +247,7 @@ class FailureAnalysisCallback(BaseCallback):
             
             print(self.prob_scenes)
 
-        if REAL_TIME_RENDERING:
+        if args.real_time_rendering:
             self.model.env.render()
 
         return True
@@ -338,51 +340,53 @@ def generate_highwayenv_config(csv_file, probabilities = np.ones(50)):
     config_json = json.dumps(config, indent=4)
     return config_json, selected_row_index
 
-llm = ChatOllama(
-    model="mistral:7b-instruct-q5_K_M",
-)
 
-if __name__ == "__main__":
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train an RL model with specific configurations.")
+    parser.add_argument('--real_time_rendering', type=bool, default=False, help='Enable real-time rendering.')
+    parser.add_argument('--use_llm', type=bool, default=False, help='Use Large Language Model for scenario generation.')
+    parser.add_argument('--edge_case', type=bool, default=True, help='Enable edge case generation.')
+    parser.add_argument('--policy_net', type=str, default='mlp', choices=['mlp', 'transformer'], help='Type of policy network to use.')
+    parser.add_argument('--rl_model', type=str, default='DQN', choices=['DQN', 'PPO'], help='Reinforcement Learning model to use.')
+    return parser.parse_args()
+
+def main(args):
     if not os.path.exists("videos"):
         os.makedirs("videos")
-
-    REAL_TIME_RENDERING = False
-    USE_LLM = False
-    EDGE_CASE = True
-
-    POLICY_NET = 'mlp'
-    RL_MODEL = 'DQN'
+    
     if not os.path.exists('experiments'):
         os.makedirs('experiments', exist_ok=True)
 
     next_exp_number = 1
-    while os.path.exists(os.path.join('experiments', f"exp_{RL_MODEL}_{USE_LLM}_{EDGE_CASE}_{next_exp_number}")):
+    while os.path.exists(os.path.join('experiments', f"exp_{args.rl_model}_{args.use_llm}_{args.edge_case}_{next_exp_number}")):
         next_exp_number += 1
 
-    experiment_path = os.path.join('experiments', f"exp_{RL_MODEL}_{USE_LLM}_{EDGE_CASE}_{next_exp_number}")
+    experiment_path = os.path.join('experiments', f"exp_{args.rl_model}_{args.use_llm}_{args.edge_case}_{next_exp_number}")
     os.makedirs(experiment_path, exist_ok=True)
 
     env = DummyVecEnv([lambda: gym.make('llm-v0', render_mode='rgb_array')])
-    if REAL_TIME_RENDERING:
+    if args.real_time_rendering:
         env = VecVideoRecorder(env, "videos", 
-                                    record_video_trigger=lambda step: step % 100 == 0,
-                                    video_length=50, 
-                                    name_prefix=f"{RL_MODEL}_highway")
+                               record_video_trigger=lambda step: step % 100 == 0,
+                               video_length=50, 
+                               name_prefix=f"{args.rl_model}_highway")
 
-    if POLICY_NET == 'transformer':
+    policy_kwargs = {}
+    if args.policy_net == 'transformer':
         policy_kwargs = dict(
                 features_extractor_class=CustomExtractor,
                 features_extractor_kwargs=attention_network_kwargs,
         )
-    elif POLICY_NET == 'mlp':
-        if RL_MODEL == 'DQN':
-            policy_kwargs=dict(net_arch=[256, 256])
+    elif args.policy_net == 'mlp':
+        if args.rl_model == 'DQN':
+            policy_kwargs = dict(net_arch=[256, 256])
         else:
             policy_kwargs = {
                 "net_arch": dict(pi=[256, 256], vf=[256, 256]) 
                 }
 
-    if RL_MODEL == 'DQN':
+    if args.rl_model == 'DQN':
         model = DQN(
             "MlpPolicy", 
             env,
@@ -412,14 +416,12 @@ if __name__ == "__main__":
             verbose=2,
             tensorboard_log='logs',
         )
-    # wandb.init(project="LLMAV", name=f"exp_kethan_{RL_MODEL}_{USE_LLM}_{next_exp_number}",sync_tensorboard=True)
-    # wandb_callback = WandbCallback(
-    #     gradient_save_freq=1000,  # adjust according to your needs
-    #     model_save_path=f"{wandb.run.dir}/model",  # save model in wandb directory
-    #     verbose=2,
-    # )
-    callback = FailureAnalysisCallback(env, experiment_path, USE_LLM, EDGE_CASE)
+    callback = FailureAnalysisCallback(env, experiment_path, args.use_llm, args.edge_case)
     model.learn(int(2e5), callback=[callback])
     model.save(os.path.join(experiment_path, 'trained_model'))
 
     env.close()
+
+if __name__ == "__main__":
+    args = parse_args()
+    main(args)

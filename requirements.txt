@@ -15,3 +15,4 @@ seaborn==0.13.2
 setuptools==68.0.0
 stable_baselines3==2.2.1
 wandb==0.16.4
+tensorboard==2.16.2
