@@ -19,9 +19,9 @@ of critical scenarios. This ultimately serves to hasten the
 development of AV agents, expand the general scope of RL
 training, and ameliorate validation efforts for AV safety.
 
-<div style="text-align: center;">
-<img src="imgs/Banner.jpg" width="300" alt="CRITICAL Framework Overview">
-</div>
+<p align="center">
+<img src="imgs/Banner.jpg" width="350" alt="CRITICAL Framework Overview">
+</p>
 
 ## Initial Set-up and Getting Started
 Ensure you have Conda installed on your system to create a Python environment with the necessary dependencies.
